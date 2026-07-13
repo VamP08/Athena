@@ -1,0 +1,35 @@
+# Core framework — LangGraph 1.x stable
+langgraph>=1.2,<2.0
+langchain>=1.0
+langchain-core>=1.0,<2.0
+
+# LLM providers — two-way fallback only (no OpenAI)
+langchain-groq>=1.0          # cloud: openai/gpt-oss-120b, free tier
+langchain-ollama>=1.0        # local: qwen3.5:9b, plumbing & dev + eval embeddings
+
+# MCP — pin 2.x; 3.x migration is a separate planned task
+fastmcp>=2.14.3,<3
+langchain-mcp-adapters>=0.3.0
+
+# Tools — ddgs is the maintained successor of duckduckgo-search;
+# langchain-community was sunset (archived 2026-06), so the search tool
+# is implemented directly in core/tools.py
+ddgs>=9.0.0
+
+# UI
+streamlit>=1.50.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+httpx>=0.27.0
+nest-asyncio>=1.6.0          # resolves asyncio conflicts in Streamlit + MCP
+
+# Observability
+langsmith>=0.4.0
+
+# Evaluation (see eval/_ragas_compat.py for the langchain-community shim)
+ragas>=0.4.3
+
+# Testing
+pytest>=8.0.0
