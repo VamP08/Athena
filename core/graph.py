@@ -95,7 +95,10 @@ def build_graph():
 def make_initial_state(topic: str) -> dict:
     """
     Returns a clean initial state dict for a new research session.
-    All keys from ResearchState must be present on the first invoke call.
+
+    Convention, not a framework requirement: LangGraph tolerates missing keys,
+    but nodes index some keys directly (e.g. state["topic"]), so we always
+    provide every ResearchState key for predictable behaviour.
     """
     return {
         "topic": topic,

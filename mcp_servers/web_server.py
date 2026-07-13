@@ -85,4 +85,6 @@ if __name__ == "__main__":
     print("Starting Athena Web Search MCP server on port 8001...")
     print("Connect at: http://localhost:8001/mcp  (streamable HTTP)")
     print("Stop with Ctrl+C\n")
-    mcp.run(transport="http", host="0.0.0.0", port=8001)
+    # Bind loopback only — this is a dev/demo server with no auth.
+    # Expose it deliberately (reverse proxy + TLS + auth), never by default.
+    mcp.run(transport="http", host="127.0.0.1", port=8001)

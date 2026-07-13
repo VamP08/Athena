@@ -5,14 +5,16 @@
 > **A privacy-first, local-first AI research analyst.** Enter a topic. Three AI
 > agents research the web, draft a structured report, and **pause for your
 > approval** before finalising. Provide feedback to trigger a targeted revision.
-> Runs entirely on-premise with Ollama — no data leaves the machine — or on free
-> cloud tiers for deployment.
+> All model inference runs on-premise with Ollama — or on free cloud tiers.
 
 **Why local-first?** 54% of German companies say data protection hinders their AI
 adoption (Bitkom, 2026). German data protection authorities explicitly prefer
-self-hosted AI systems. Athena is built for exactly that constraint: the whole
-pipeline — agents, search synthesis, drafting, even the evaluation judge and
-embeddings — can run with zero external API calls.
+self-hosted AI systems. Athena is built for exactly that constraint: every model
+call — the agents, drafting, even the evaluation judge and embeddings — can run
+locally, so prompts, drafts, and internal context never leave the machine. In
+web-research mode, only the search queries themselves reach external engines;
+the planned document mode (reports over your own PDFs) removes even that,
+running fully air-gapped.
 
 ---
 

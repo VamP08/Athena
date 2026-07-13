@@ -200,7 +200,7 @@ elif prompt := st.chat_input("Enter a research topic or question..."):
                 stream_mode="updates",
             ):
                 for node_name in chunk:
-                    if node_name not in ("__end__",):
+                    if node_name not in ("__end__", "__interrupt__"):
                         st.write(f"→ **{node_name}** working...")
 
             status.update(label="✅ Draft ready for your review", state="complete")

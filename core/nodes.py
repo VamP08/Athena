@@ -129,8 +129,18 @@ def _execute_research(topic: str, tools: List[BaseTool]) -> str:
                 )
             )
 
-    # Last message is the synthesis the model wrote after all searches
-    return messages[-1].content if messages else f"No research gathered for: {topic}"
+    # Normally the loop exits on a tool-call-free AIMessage — the synthesis.
+    # If the iteration cap exhausted while the model was still calling tools,
+    # the last message is a raw ToolMessage — force a final synthesis, without
+    # tools bound, so the writer never receives a raw search dump as "research".
+    last = messages[-1]
+    if isinstance(last, AIMessage) and not last.tool_calls:
+        return last.content
+
+    messages.append(HumanMessage(
+        content="Stop searching. Write your comprehensive synthesis of all findings now."
+    ))
+    return llm.invoke(messages).content
 
 
 # ── Supervisor node ───────────────────────────────────────────────────────────
@@ -230,11 +240,15 @@ def writer_node(state: ResearchState) -> dict:
 
     revision_block = ""
     if feedback:
+        # The previous draft must be in the prompt — otherwise the model
+        # regenerates from research and "targeted changes" is impossible.
         revision_block = (
-            f"\n\n**REVISION REQUEST** — address this feedback precisely:\n"
+            f"\n\nPREVIOUS DRAFT (revise this — do not start from scratch):\n"
+            f"{state.get('draft_report', '')}\n\n"
+            f"**REVISION REQUEST** — address this feedback precisely:\n"
             f"{feedback}\n\n"
             f"Make targeted changes to the specific sections mentioned. "
-            f"Do not rewrite sections that were not mentioned in the feedback."
+            f"Keep sections that were not mentioned identical to the previous draft."
         )
 
     response = llm.invoke([
