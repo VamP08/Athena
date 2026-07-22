@@ -26,6 +26,7 @@ import asyncio
 import csv
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -68,14 +69,22 @@ def _build_judge_and_embeddings():
         judge_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         judge_client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key)
         print(f"Judge: Groq {judge_model} · Embeddings: local Ollama")
+        # Groq free tier caps gpt-oss at 8K tokens/minute PER REQUEST budget
+        # (prompt + max_tokens counted together). Low reasoning effort + a small
+        # completion budget keeps every judge call under the ceiling.
+        # 3500 completion + ~2.5-4K prompt stays under the 8K TPM per-request
+        # budget; 2500 proved too tight for faithfulness verdicts on ~500-word
+        # drafts. Mind the 200K tokens-per-DAY cap when scheduling full runs.
+        judge = llm_factory(
+            judge_model, provider="openai", client=judge_client,
+            max_tokens=3500, reasoning_effort="low",
+        )
     else:
         judge_model = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
-        judge_client = ollama_client
         print(f"Judge: local Ollama {judge_model} (set GROQ_API_KEY for a stronger judge)")
+        # Local reasoning models think before the JSON verdict — needs headroom.
+        judge = llm_factory(judge_model, provider="openai", client=ollama_client, max_tokens=6000)
 
-    # Generous max_tokens: reasoning models (qwen3.5, gpt-oss) spend tokens on
-    # thinking before the JSON verdict — the instructor default truncates them.
-    judge = llm_factory(judge_model, provider="openai", client=judge_client, max_tokens=6000)
     return judge, embeddings
 
 
@@ -108,6 +117,25 @@ def run_case(graph, case: dict, case_num: int, total: int) -> dict:
     }
 
 
+_PACE_SECONDS = 20 if os.getenv("GROQ_API_KEY") else 0  # respect the free-tier TPM window
+
+
+async def _score(metric_call):
+    """One metric call with pacing + a single retry on rate limiting."""
+    try:
+        result = await metric_call()
+    except Exception as e:
+        if "rate_limit" in str(e) or "429" in str(e):
+            print("    Rate limited — waiting 65s and retrying once...")
+            time.sleep(65)
+            result = await metric_call()
+        else:
+            raise
+    if _PACE_SECONDS:
+        time.sleep(_PACE_SECONDS)
+    return result.value
+
+
 async def score_rows(rows: list[dict]) -> list[dict]:
     judge, embeddings = _build_judge_and_embeddings()
 
@@ -120,23 +148,23 @@ async def score_rows(rows: list[dict]) -> list[dict]:
         print(f"  Scoring [{i}/{len(rows)}] {row['question'][:50]}...")
         result = dict(row)
         try:
-            result["answer_relevancy"] = (
-                await answer_relevancy.ascore(user_input=row["question"], response=row["answer"])
-            ).value
-            result["faithfulness"] = (
-                await faithfulness.ascore(
+            result["answer_relevancy"] = await _score(
+                lambda: answer_relevancy.ascore(user_input=row["question"], response=row["answer"])
+            )
+            result["faithfulness"] = await _score(
+                lambda: faithfulness.ascore(
                     user_input=row["question"],
                     response=row["answer"],
                     retrieved_contexts=row["contexts"],
                 )
-            ).value
-            result["context_precision"] = (
-                await context_precision.ascore(
+            )
+            result["context_precision"] = await _score(
+                lambda: context_precision.ascore(
                     user_input=row["question"],
                     reference=row["reference"],
                     retrieved_contexts=row["contexts"],
                 )
-            ).value
+            )
         except Exception as e:
             print(f"    ❌ Scoring failed: {e}")
             continue
@@ -190,7 +218,12 @@ def main():
         )
 
     # ── CSV artifact ──────────────────────────────────────────────────────────
-    output_path = Path(__file__).parent / "results.csv"
+    # A partial run must never clobber the last complete results file.
+    filename = "results.csv" if len(scored) == len(TEST_CASES) else "results_partial.csv"
+    if filename != "results.csv":
+        print(f"\n⚠️  Only {len(scored)}/{len(TEST_CASES)} cases scored — "
+              f"writing {filename}; results.csv left untouched.")
+    output_path = Path(__file__).parent / filename
     fields = ["question", *TARGETS.keys()]
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
