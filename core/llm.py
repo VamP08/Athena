@@ -23,6 +23,27 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def resolve_backend() -> tuple[str, str]:
+    """
+    Resolve the active (backend, model) pair.
+
+    ATHENA_LLM_BACKEND: auto (default) | groq | ollama
+      auto   — Groq if GROQ_API_KEY is set, else Ollama
+      groq   — force Groq (falls back to Ollama if no key)
+      ollama — force local Ollama even when a Groq key exists
+
+    Read at every LLM construction, so a runtime switch (e.g. from the UI)
+    takes effect on the next node execution. Process-wide by design — this is
+    an operator control, not a per-session setting.
+    """
+    forced = os.getenv("ATHENA_LLM_BACKEND", "auto").lower()
+    has_groq = bool(os.getenv("GROQ_API_KEY"))
+
+    if forced == "ollama" or not has_groq:
+        return "ollama", os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
+    return "groq", os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+
 def get_llm(temperature: float = 0):
     """
     Returns the appropriate ChatModel.
@@ -33,11 +54,13 @@ def get_llm(temperature: float = 0):
     Returns:
         A LangChain BaseChatModel instance.
     """
-    if os.getenv("GROQ_API_KEY"):
+    backend, model = resolve_backend()
+
+    if backend == "groq":
         from langchain_groq import ChatGroq
 
         return ChatGroq(
-            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+            model=model,
             temperature=temperature,
         )
 
@@ -49,7 +72,7 @@ def get_llm(temperature: float = 0):
         kwargs["base_url"] = os.getenv("OLLAMA_BASE_URL")
 
     return ChatOllama(
-        model=os.getenv("OLLAMA_MODEL", "qwen3.5:9b"),
+        model=model,
         temperature=temperature,
         num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "8192")),
         **kwargs,

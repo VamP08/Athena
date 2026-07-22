@@ -203,9 +203,13 @@ def list_research(limit: int = 20):
 
 @app.get("/health")
 def health():
+    from core.llm import resolve_backend
+
+    backend, model = resolve_backend()
     return {
         "status": "ok",
         "checkpointer": os.getenv("ATHENA_CHECKPOINTER", "memory"),
-        "model_backend": "groq" if os.getenv("GROQ_API_KEY") else "ollama",
+        "model_backend": backend,
+        "model": model,
         "auth": "enabled" if os.getenv("ATHENA_API_TOKEN") else "disabled",
     }

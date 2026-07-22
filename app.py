@@ -100,19 +100,64 @@ def get_graph():
 
 graph = get_graph()
 
-# ── Runtime facts (sidebar truth panel — real values, not marketing) ──────────
+# ── Model selection (sidebar) ─────────────────────────────────────────────────
+# Process-wide operator control: choices are written to env, and get_llm()
+# re-reads env on every node execution, so a switch applies from the next run.
+
+GROQ_MODELS = [
+    "openai/gpt-oss-120b",   # production, tool-capable — default
+    "openai/gpt-oss-20b",    # faster, lighter
+    "qwen/qwen3.6-27b",      # Groq's other recommended replacement
+]
+
+
+@st.cache_data(ttl=30)
+def list_ollama_models() -> list[str]:
+    """Chat-capable models actually pulled on the local Ollama server."""
+    import httpx
+
+    base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        tags = httpx.get(f"{base}/api/tags", timeout=3).json()
+        names = [m["name"] for m in tags.get("models", [])]
+        return [n for n in names if "embed" not in n] or [os.getenv("OLLAMA_MODEL", "qwen3.5:9b")]
+    except Exception:
+        return [os.getenv("OLLAMA_MODEL", "qwen3.5:9b")]
+
+
+def model_picker():
+    has_groq = bool(os.getenv("GROQ_API_KEY"))
+
+    backends = (["Groq (cloud)", "Ollama (local)"] if has_groq else ["Ollama (local)"])
+    from core.llm import resolve_backend
+    active_backend, _ = resolve_backend()
+    default_ix = 0 if (active_backend == "groq" and has_groq) else len(backends) - 1
+
+    backend = st.selectbox("Backend", backends, index=default_ix)
+
+    if backend.startswith("Groq"):
+        current = os.getenv("GROQ_MODEL", GROQ_MODELS[0])
+        options = [current] + [m for m in GROQ_MODELS if m != current]
+        model = st.selectbox("Model", options)
+        os.environ["ATHENA_LLM_BACKEND"] = "groq"
+        os.environ["GROQ_MODEL"] = model
+    else:
+        options = list_ollama_models()
+        current = os.getenv("OLLAMA_MODEL", options[0])
+        ix = options.index(current) if current in options else 0
+        model = st.selectbox("Model", options, index=ix)
+        os.environ["ATHENA_LLM_BACKEND"] = "ollama"
+        os.environ["OLLAMA_MODEL"] = model
+        if not has_groq:
+            st.caption("Add GROQ_API_KEY in .env to enable the cloud backend.")
+
 
 def runtime_info() -> dict:
-    if os.getenv("GROQ_API_KEY"):
-        model = f"Groq · {os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b')}"
-    else:
-        model = f"Ollama · {os.getenv('OLLAMA_MODEL', 'qwen3.5:9b')} (local)"
     tools = (
         "MCP server" if os.getenv("MCP_MODE", "false").lower() == "true"
         else "In-process web search"
     )
     return {
-        "Model": model,
         "Tools": tools,
         "State": os.getenv("ATHENA_CHECKPOINTER", "memory"),
     }
@@ -209,6 +254,9 @@ with st.sidebar:
     st.markdown('<div class="sb-brand">Athena<span style="color:#E3A94F">.</span></div>',
                 unsafe_allow_html=True)
     st.caption("Research analyst with a human approval gate.")
+
+    st.markdown('<div class="sb-label">Model</div>', unsafe_allow_html=True)
+    model_picker()
 
     st.markdown('<div class="sb-label">Runtime</div>', unsafe_allow_html=True)
     rows = "".join(
