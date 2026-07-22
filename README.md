@@ -120,14 +120,21 @@ python eval/run_eval.py
 ```
 
 Runs every golden-dataset topic through the full graph (auto-approving the HITL
-gate), then scores with LLM-as-judge. Judge and embeddings run locally by default
-(Ollama) — the evaluation itself honours the zero-external-calls constraint.
+gate), then scores with LLM-as-judge. Judge and embeddings can run fully locally
+(Ollama) — the evaluation itself honours the local-first constraint.
 
-| Metric | Score | Target |
-|---|---|---|
-| answer_relevancy | _pending M3_ | > 0.85 |
-| faithfulness | _pending M3_ | > 0.80 |
-| context_precision | _pending M3_ | > 0.75 |
+| Metric | Score | Target | |
+|---|---|---|---|
+| answer_relevancy | **0.87** | > 0.85 | ✅ |
+| faithfulness | **0.83** | > 0.80 | ✅ |
+| context_precision | **1.00*** | > 0.75 | ✅ |
+
+<sup>5-topic golden dataset · judge: `openai/gpt-oss-120b` (Groq) · embeddings:
+local `nomic-embed-text` · 2026-07-22.
+*context_precision currently scores a single synthesized context chunk, so it
+reads near-binary — the planned citations feature (raw per-source contexts) will
+turn it into a discriminating signal. Weakest cell: faithfulness 0.64 on the
+fast-moving topic (SpaceX Starship) — the current tuning target.</sup>
 
 ---
 
