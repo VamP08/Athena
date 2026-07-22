@@ -16,6 +16,11 @@ langchain-mcp-adapters>=0.3.0
 # is implemented directly in core/tools.py
 ddgs>=9.0.0
 
+# Service layer
+fastapi>=0.115
+uvicorn[standard]>=0.30
+langgraph-checkpoint-sqlite>=2.0   # durable checkpointer (ATHENA_CHECKPOINTER=sqlite)
+
 # UI
 streamlit>=1.50.0
 

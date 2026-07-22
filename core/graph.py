@@ -19,11 +19,39 @@ Graph topology:
                                                                (pauses for human)
 """
 
+import os
+
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from .nodes import human_review_node, researcher_node, supervisor_node, writer_node
 from .state import ResearchState
+
+
+def _make_checkpointer():
+    """
+    Checkpointer selected by ATHENA_CHECKPOINTER:
+
+      memory  (default) — fast, no files; paused runs die with the process.
+                          Right for tests and CI.
+      sqlite            — durable; paused reviews survive a restart. Right for
+                          the app and the API. DB path: ATHENA_DB_PATH.
+
+    Postgres (multi-instance) is the planned production step — same interface,
+    swap here only.
+    """
+    kind = os.getenv("ATHENA_CHECKPOINTER", "memory").lower()
+    if kind == "sqlite":
+        import sqlite3
+
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        path = os.getenv("ATHENA_DB_PATH", "athena.db")
+        # One long-lived connection shared across threads; SqliteSaver
+        # serialises access with its own internal lock.
+        conn = sqlite3.connect(path, check_same_thread=False)
+        return SqliteSaver(conn)
+    return InMemorySaver()
 
 
 def _route_supervisor(state: ResearchState) -> str:
@@ -40,15 +68,16 @@ def _route_after_review(state: ResearchState) -> str:
     return "writer" if state.get("human_feedback") else END
 
 
-def build_graph():
+def build_graph(checkpointer=None):
     """
     Builds and compiles the Athena research graph.
 
-    Returns:
-        A compiled LangGraph CompiledGraph with in-memory checkpointing.
-        The checkpointer enables interrupt() to persist state across HTTP
-        request boundaries (critical for Streamlit's HITL panel).
-        Dev/demo only — swap for SqliteSaver/PostgresSaver in production.
+    Args:
+        checkpointer: Optional explicit checkpointer; defaults to the one
+            selected by ATHENA_CHECKPOINTER (see _make_checkpointer).
+
+    The checkpointer enables interrupt() to persist state across request
+    boundaries — the foundation of the human review gate.
     """
     g = StateGraph(ResearchState)
 
@@ -89,7 +118,7 @@ def build_graph():
         },
     )
 
-    return g.compile(checkpointer=InMemorySaver())
+    return g.compile(checkpointer=checkpointer or _make_checkpointer())
 
 
 def make_initial_state(topic: str) -> dict:

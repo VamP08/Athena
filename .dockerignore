@@ -1,0 +1,9 @@
+# Whitelist: only runtime code enters the image. Everything else —
+# secrets (.env), venvs, git history, local state, docs — stays out.
+*
+!api/
+!core/
+!mcp_servers/
+!app.py
+!requirements.txt
+!.streamlit/

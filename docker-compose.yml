@@ -1,0 +1,50 @@
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+      ATHENA_API_TOKEN: ${ATHENA_API_TOKEN:-}
+      ATHENA_CHECKPOINTER: sqlite
+      ATHENA_DB_PATH: /data/athena.db
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}
+    volumes:
+      - athena-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  ui:
+    build: .
+    command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+      ATHENA_CHECKPOINTER: sqlite
+      ATHENA_DB_PATH: /data/ui.db   # own DB — UI and API are separate processes
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}
+    volumes:
+      - athena-data:/data
+
+  # Optional local-LLM backend: docker compose --profile local-llm up
+  # First run: docker compose exec ollama ollama pull qwen3.5:9b
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  athena-data:
+  ollama-models:

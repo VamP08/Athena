@@ -43,8 +43,14 @@ def get_llm(temperature: float = 0):
 
     from langchain_ollama import ChatOllama
 
+    kwargs = {}
+    # In containers Ollama is a sibling service, not localhost
+    if os.getenv("OLLAMA_BASE_URL"):
+        kwargs["base_url"] = os.getenv("OLLAMA_BASE_URL")
+
     return ChatOllama(
         model=os.getenv("OLLAMA_MODEL", "qwen3.5:9b"),
         temperature=temperature,
         num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "8192")),
+        **kwargs,
     )

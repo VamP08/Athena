@@ -27,6 +27,8 @@ running fully air-gapped.
 | **Custom MCP server** | FastMCP 2.x server exposing `search_web` + `fetch_page` over streamable HTTP — any MCP client (Claude Desktop, Cursor) connects without code changes |
 | **Local LLM** | Ollama + Qwen3.5:9b — fits consumer hardware, fully offline |
 | **Cloud LLM** | Groq API (`openai/gpt-oss-120b`, free tier) — swap via one env var, zero code changes |
+| **Production service layer** | FastAPI REST API with bearer-token auth, durable SQLite checkpointing (a paused review survives a server restart — verified), an approval **audit trail**, and worker-pool job execution |
+| **Containerized** | One `docker compose up` brings up API + UI, with an optional local-LLM (Ollama) profile |
 | **Observability** | LangSmith auto-tracing — every tool call, token count, and routing decision recorded |
 | **Evaluation** | Ragas LLM-as-judge: answer_relevancy · faithfulness · context_precision — with a fully local judge+embeddings option |
 | **Testing** | pytest with mocked LLM — deterministic, no network, runs in CI on every push |
@@ -78,6 +80,33 @@ Verify the engine without the UI:
 ```bash
 pytest tests/ -v                 # mocked — fast, no network
 python test_graph_manual.py      # real end-to-end run (LLM + live search)
+```
+
+### Run as a service (FastAPI)
+
+```bash
+uvicorn api.main:app --port 8000
+```
+
+```
+POST /research                      {"topic": "..."}            → 202 {thread_id}
+GET  /research/{thread_id}          status + draft when ready
+POST /research/{thread_id}/resume   {"action": "approve"} or
+                                    {"action": "revise", "feedback": "..."}
+GET  /research/{thread_id}/audit    who approved/revised what, when
+GET  /health
+```
+
+Set `ATHENA_API_TOKEN` to require bearer-token auth. With
+`ATHENA_CHECKPOINTER=sqlite` (default in `.env.example`), a review that is
+awaiting approval **survives an API restart** — kill the server mid-review,
+start it again, and approve the same thread.
+
+### Run with Docker
+
+```bash
+docker compose up --build           # API on :8000, UI on :8501
+docker compose --profile local-llm up   # + Ollama as the local model backend
 ```
 
 ---
@@ -143,6 +172,10 @@ fast-moving topic (SpaceX Starship) — the current tuning target.</sup>
 ```
 athena/
 ├── app.py                    # Streamlit UI — chat, streaming, HITL review panel
+├── api/
+│   ├── main.py               # FastAPI service — jobs, review gate, auth, health
+│   └── registry.py           # Thread registry + approval audit trail (SQLite)
+├── Dockerfile · docker-compose.yml
 ├── test_graph_manual.py      # Real end-to-end validation script
 ├── core/
 │   ├── state.py              # ResearchState TypedDict (add-reducer lists)
