@@ -21,6 +21,17 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 langgraph-checkpoint-sqlite>=2.0   # durable checkpointer (ATHENA_CHECKPOINTER=sqlite)
 
+# Document mode — parsing an institution's mixed-format archive.
+# All permissively licensed (MIT/BSD) and model-free: nothing here downloads
+# weights or opens a socket at runtime, which is what keeps the offline claim
+# literally true. PyMuPDF is faster but AGPL-3.0, which would be viral across
+# the FastAPI service boundary; see docs/DECISIONS.md.
+pdfplumber>=0.11.10,<0.12    # PDF text + table extraction with bounding boxes
+openpyxl>=3.1.5,<4           # XLSX (read twice: values + formulas)
+python-docx>=1.2.0,<2        # DOCX
+charset-normalizer>=3.4.9,<4 # encoding detection for legacy cp1252 exports
+sqlite-vec>=0.1.9,<0.2       # vector search inside the SQLite file we already ship
+
 # UI
 streamlit>=1.50.0
 

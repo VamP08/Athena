@@ -133,6 +133,7 @@ def make_initial_state(topic: str) -> dict:
         "topic": topic,
         "messages": [],
         "search_results": [],
+        "retrieved_chunks": [],
         "draft_report": "",
         "next_agent": "",
         "human_feedback": "",

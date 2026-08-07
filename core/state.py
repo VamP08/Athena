@@ -22,6 +22,17 @@ class ResearchState(TypedDict):
     # Accumulated research summaries from the researcher agent
     search_results: Annotated[List[str], add]
 
+    # Verbatim evidence behind those summaries, in document mode: one dict per
+    # retrieved passage ({source, locator, kind, text, score, ...}).
+    #
+    # This exists because `search_results` holds the researcher's *prose
+    # synthesis*, not its sources. The writer therefore never saw the underlying
+    # passages, so it could not cite them, and Ragas was being handed one fused
+    # blob as `retrieved_contexts` — which is why context_precision scored a
+    # meaningless 1.00. Carrying the real chunks makes citation possible and
+    # makes the retrieval metrics measure retrieval.
+    retrieved_chunks: Annotated[List[dict], add]
+
     # The current draft report (overwritten on each revision)
     draft_report: str
 

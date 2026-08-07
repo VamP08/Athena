@@ -22,6 +22,7 @@ running fully air-gapped.
 
 | Skill | Implementation |
 |---|---|
+| **Retrieval (RAG) over a real archive** | Mixed-format ingestion (PDF · XLSX · DOCX · CSV · MD) into **one SQLite file** — `sqlite-vec` vectors + FTS5 lexical, fused with Reciprocal Rank Fusion, filtered by document type and year |
 | **Multi-agent orchestration** | LangGraph 1.2 Supervisor pattern — deterministic routing rules first, Pydantic structured-output LLM routing for ambiguous cases |
 | **Human-in-the-Loop (HITL)** | `interrupt()` pauses the graph mid-execution; `Command(resume=)` restarts it with approval or feedback; feedback loops back through the writer |
 | **Custom MCP server** | FastMCP 2.x server exposing `search_web` + `fetch_page` over streamable HTTP — any MCP client (Claude Desktop, Cursor) connects without code changes |
@@ -110,6 +111,86 @@ docker compose --profile local-llm up   # + Ollama as the local model backend
 ```
 
 ---
+
+## Document Mode — reports over your own financial archive
+
+Point Athena at a folder of the organisation's own documents and it stops using the
+web entirely. The same three agents research, draft and pause for approval — but the
+evidence now comes from your files, and **no web tool is even loaded**, so
+"nothing leaves this machine" is literal rather than aspirational.
+
+```bash
+ollama pull bge-m3                # multilingual embeddings (German + English)
+python corpus_tools/generate_corpus.py   # optional: a synthetic demo archive
+python ingest.py                  # parse + embed ./corpus -> athena_index.db
+
+ATHENA_MODE=documents streamlit run app.py
+```
+
+Ask it *"Wie hoch war der Umsatz in Q3 2025 und wer hat den Jahresabschluss geprüft?"*
+and it retrieves the exact spreadsheet row and the auditor's name from two different
+documents in two different formats, then writes a cited report.
+
+| Handles | How |
+|---|---|
+| **Tables, not just prose** | Every row is indexed with its column headers attached, so `Umsatz (EUR): 4821000` stays interpretable instead of becoming a naked number |
+| **Exact figures and IDs** | Lexical BM25 runs alongside embeddings — invoice numbers, account codes and `Q3 2025` are precisely what dense vectors retrieve badly |
+| **German + English** | A question in one language finds documents in the other |
+| **Legacy exports** | cp1252 semicolon-delimited CSVs (what German accounting software emits) decode correctly |
+| **What it *cannot* read** | A scanned PDF or a formula-only spreadsheet total is reported as a **visible limitation**, never silently treated as absent — in a financial archive, "unreadable" and "not there" are different answers |
+| **Counting questions** | A `list_documents` tool exposes the corpus inventory, because semantic search structurally cannot answer "how many invoices are there" |
+
+The demo corpus is **synthetic by design** — the archive of a fictional logistics
+company, generated from a fixed seed. Committing real financial records to a public
+repo would contradict the premise this project argues for, and a generated corpus
+gives the evaluation exact ground truth.
+
+### Grounding evaluation (deterministic, no LLM judge)
+
+Because the demo corpus is generated, every answer has one provably correct value —
+so accuracy is scored exactly, offline, with no judge and no tokens
+(`python eval/run_grounding_eval.py`).
+
+| Metric | Local qwen3.5:9b | |
+|---|---|---|
+| answer accuracy | 6/6 | ✅ |
+| **fabricated figures** | **0** | ✅ |
+| misattributed answers | 0/6 | ✅ |
+| retrieval hit rate | 6/6 | ✅ |
+| correct refusal on an unanswerable question | 1/1 | ✅ |
+
+<sup>7-case golden set · fully offline · qwen3.5:9b, reasoning on, num_ctx 16384 ·
+2026-08-03. "Fabricated" = a figure in the report appearing in none of the retrieved
+passages — the failure that matters most in a financial archive, since it looks
+authoritative and is silently wrong. Figures the report *derives* from grounded ones
+(a year-on-year difference, say) are classified separately: computing is analysis,
+not invention.</sup>
+
+**What the context window was hiding.** At `num_ctx=8192` this suite scored 5/6, and
+the missing case returned a *completely empty report* despite retrieving the correct
+figure at rank 1 — the generation failed silently while retrieval was perfect. The
+cause is that Ollama truncates an over-long prompt from the **front**, discarding the
+system prompt first: the model loses the instruction *"do not include any claim not
+supported by the research"* while keeping partial evidence. Raising the window to
+16384 is therefore an accuracy fix, not a performance tweak, and it costs ~1.6x
+latency. Measured, with the model's real ceiling being 262144:
+
+| num_ctx | 12-passage prompt | VRAM | on GPU |
+|---|---|---|---|
+| 8192 | **empty report** | 7230/8188 | 100% |
+| 16384 | 553 words, correct | 6375/8188 | 84% |
+| 32768 | 439 words, correct | 6393/8188 | 76% |
+
+This harness also settled a design question against intuition. Disabling the local
+model's reasoning trace is **~4x faster** (48 s vs 208 s per case) and was briefly
+adopted for that reason — until measurement showed it produced **5 fabricated figures
+and 2 misattributed answers** where the slower setting produced none. Retrieval was
+identical (6/6) in both, so the difference was purely in how the model used evidence
+it already had. The speed was reverted; accuracy is not a thing this project trades.
+
+Measured on a consumer laptop, fully offline: 13 documents → 447 indexed passages in
+**18.5 s**; a complete research → draft → review cycle in **~3.5 min** on a local 9B
+model with reasoning enabled.
 
 ## Two-Environment Strategy
 

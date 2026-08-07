@@ -62,15 +62,96 @@ Exact structure (use these markdown headers):
 1–2 sentences: what should the reader walk away knowing or doing?
 """
 
+RESEARCHER_DOCUMENTS_SYSTEM = """You are a financial analyst with access to this
+organisation's internal document archive. The archive is the ONLY source of truth —
+you have no web access and no outside knowledge of this organisation.
+
+Instructions:
+1. If the request is broad (e.g. "write a report on our finances"), call
+   list_documents FIRST so you know what the archive actually contains.
+2. Use document_search for every fact. Run several searches covering different
+   angles and different wordings — figures, account names, periods, parties.
+3. Documents are in German and English. If a German search returns little, try the
+   English wording of the same idea, and vice versa.
+4. Copy figures EXACTLY as they appear, including the original number format
+   (e.g. 4.821.000,00 EUR). Never round, convert, or recalculate a figure.
+5. Record which document and locator each fact came from — the report must cite them.
+6. If the archive does not contain something, say so plainly. Never fill a gap
+   from general knowledge; an invented figure is far worse than a stated gap.
+7. If a document is reported as only partly indexed (a scan, or formula-only
+   totals), mention that limitation rather than treating it as absent.
+
+After searching, write a detailed synthesis of what you found, with the source
+document named next to every figure.
+"""
+
+WRITER_DOCUMENTS_SYSTEM = """You are a financial analyst producing an internal report
+from this organisation's own documents.
+
+Requirements:
+- Length: 400-600 words
+- Tone: precise, factual, suitable for a finance or audit reader
+- CRITICAL: every figure and claim must come from the retrieved passages provided.
+  If the passages do not support something, omit it or state that the archive does
+  not cover it. Do NOT use outside knowledge about any company.
+- Reproduce figures exactly as written in the sources. Do not round or recompute.
+- Cite sources inline as [1], [2] matching the numbered passages you were given,
+  and end with a "## Quellen / Sources" section listing them.
+- Answer in the language of the user's question.
+
+Exact structure (use these markdown headers):
+
+## Executive Summary
+2-3 sentences with the single most important takeaway.
+
+## Key Findings
+- Finding with the exact figure and a [n] citation
+- (4 findings, each cited)
+
+## Analysis
+2-3 paragraphs of context and implications, cited.
+
+## Conclusion
+1-2 sentences: what the reader should know or do.
+
+## Quellen / Sources
+[1] filename — locator
+"""
+
+# Per-tool output budgets. A web snippet dump is fine at 3000 chars; a document
+# search returns several verbatim passages that must reach the model intact,
+# because the writer cites them by number.
+_DEFAULT_TOOL_BUDGET = 3000
+_TOOL_CHAR_BUDGET = {
+    "document_search": int(os.getenv("ATHENA_SEARCH_CHAR_BUDGET", "6000")) + 800,
+    "list_documents": 4000,
+}
+
+
+def _document_mode() -> bool:
+    return os.getenv("ATHENA_MODE", "web").lower() == "documents"
+
+
 # ── Tool selection ────────────────────────────────────────────────────────────
 
 def _get_search_tools() -> List[BaseTool]:
     """
     Returns search tools for the researcher agent.
 
-    MCP_MODE=true  → connects to the FastMCP web server (run web_server.py first)
-    MCP_MODE=false → uses the in-process ddgs web_search tool (default, cloud-safe)
+    ATHENA_MODE=documents → the document archive (document_search + list_documents)
+    MCP_MODE=true         → connects to the FastMCP web server (run web_server.py first)
+    otherwise             → the in-process ddgs web_search tool (default, cloud-safe)
+
+    Document mode deliberately does NOT also expose web_search. Two reasons: it
+    is what makes "no data leaves this machine" literally true rather than
+    aspirational, and a 9B local model routes far more reliably between two
+    tools than four.
     """
+    if os.getenv("ATHENA_MODE", "web").lower() == "documents":
+        from .doc_tools import get_document_tools
+
+        return get_document_tools()
+
     if os.getenv("MCP_MODE", "false").lower() == "true":
         try:
             from mcp_servers.connect import get_mcp_tools_sync
@@ -87,9 +168,13 @@ def _get_search_tools() -> List[BaseTool]:
 
 # ── Research execution (separated for testability) ────────────────────────────
 
-def _execute_research(topic: str, tools: List[BaseTool]) -> str:
+def _execute_research(topic: str, tools: List[BaseTool]) -> tuple[str, List[dict]]:
     """
-    Runs the tool-calling loop and returns the final synthesis.
+    Runs the tool-calling loop.
+
+    Returns (synthesis, retrieved_chunks). The second element is empty in web
+    mode and holds the verbatim passages behind the synthesis in document mode,
+    so the writer can cite them and the eval harness can score real retrieval.
 
     Separated from researcher_node so tests can mock this cleanly
     without needing to replicate the full LLM + tool interaction.
@@ -99,9 +184,13 @@ def _execute_research(topic: str, tools: List[BaseTool]) -> str:
     tool_map = {t.name: t for t in tools}
 
     messages = [
-        SystemMessage(content=RESEARCHER_SYSTEM),
+        SystemMessage(
+            content=RESEARCHER_DOCUMENTS_SYSTEM if _document_mode() else RESEARCHER_SYSTEM
+        ),
         HumanMessage(content=f"Research this topic thoroughly: {topic}"),
     ]
+    chunks: List[dict] = []
+    seen_keys: set = set()
 
     for iteration in range(6):  # hard cap prevents runaway loops
         response = llm_with_tools.invoke(messages)
@@ -115,19 +204,39 @@ def _execute_research(topic: str, tools: List[BaseTool]) -> str:
         for tc in response.tool_calls:
             tool = tool_map.get(tc["name"])
             if tool is None:
-                result = f"Unknown tool: {tc['name']}"
-            else:
-                try:
-                    result = tool.invoke(tc["args"])
-                except Exception as e:
-                    result = f"Tool error: {e}"
+                messages.append(ToolMessage(
+                    content=f"Unknown tool: {tc['name']}", tool_call_id=tc["id"]
+                ))
+                continue
 
-            messages.append(
-                ToolMessage(
-                    content=str(result)[:3000],  # truncate to avoid context overflow
-                    tool_call_id=tc["id"],
-                )
-            )
+            # Invoked with the whole ToolCall (not just .args) so LangChain
+            # returns a ToolMessage carrying .artifact for content_and_artifact
+            # tools. That artifact is how verbatim chunks escape the tool loop.
+            try:
+                msg = tool.invoke(tc)
+            except Exception as e:
+                messages.append(ToolMessage(content=f"Tool error: {e}", tool_call_id=tc["id"]))
+                continue
+
+            if not isinstance(msg, ToolMessage):
+                msg = ToolMessage(content=str(msg), tool_call_id=tc["id"])
+
+            for rec in (getattr(msg, "artifact", None) or []):
+                if not isinstance(rec, dict):
+                    continue
+                key = (rec.get("source"), rec.get("locator"), (rec.get("text") or "")[:80])
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                chunks.append(rec)
+
+            # Budget is per tool, not global: 3000 chars is right for a web
+            # snippet dump but silently decapitates a multi-passage document
+            # result, which would make the writer cite a source it never saw.
+            budget = _TOOL_CHAR_BUDGET.get(tc["name"], _DEFAULT_TOOL_BUDGET)
+            if isinstance(msg.content, str) and len(msg.content) > budget:
+                msg.content = msg.content[:budget].rstrip() + "\n[... truncated]"
+            messages.append(msg)
 
     # Normally the loop exits on a tool-call-free AIMessage — the synthesis.
     # If the iteration cap exhausted while the model was still calling tools,
@@ -135,12 +244,12 @@ def _execute_research(topic: str, tools: List[BaseTool]) -> str:
     # tools bound, so the writer never receives a raw search dump as "research".
     last = messages[-1]
     if isinstance(last, AIMessage) and not last.tool_calls:
-        return last.content
+        return last.content, chunks
 
     messages.append(HumanMessage(
         content="Stop searching. Write your comprehensive synthesis of all findings now."
     ))
-    return llm.invoke(messages).content
+    return llm.invoke(messages).content, chunks
 
 
 # ── Supervisor node ───────────────────────────────────────────────────────────
@@ -216,15 +325,84 @@ def researcher_node(state: ResearchState) -> dict:
     DuckDuckGo directly (MCP_MODE=false, default).
     """
     tools = _get_search_tools()
-    synthesis = _execute_research(state["topic"], tools)
+    synthesis, chunks = _execute_research(state["topic"], tools)
 
+    note = f" — {len(chunks)} passages retrieved" if chunks else ""
     return {
         "search_results": [synthesis],
-        "messages": [AIMessage(content=f"[Researcher] Research complete on '{state['topic']}'")],
+        "retrieved_chunks": chunks,
+        "messages": [AIMessage(
+            content=f"[Researcher] Research complete on '{state['topic']}'{note}"
+        )],
     }
 
 
 # ── Writer node ───────────────────────────────────────────────────────────────
+
+# Last-resort character ceiling for the writer's prompt.
+#
+# This is a SAFETY NET, not the primary mechanism. The primary fix is the context
+# window itself: num_ctx now defaults to 16384 (see core/llm.py), at which a
+# 12-passage, 11,791-char prompt produces a correct 553-word report. Under the
+# old 8192 the same prompt returned nothing.
+#
+# Dropping evidence to fit a window is a quality compromise and is only
+# acceptable when the alternative is a silent failure, so the ceiling sits ABOVE
+# every prompt the system normally builds — a full 12-passage revision measures
+# ~13,000 chars. It exists because the prompt can still grow three ways inside
+# ONE run: the researcher's loop resends its history each step, `search_results`
+# accumulates across researcher passes, and a REVISION adds the previous draft
+# (+49% measured). The revise path is the most likely to overflow, and it is the
+# project's headline HITL feature.
+#
+# Raise OLLAMA_NUM_CTX before raising this: more window costs latency, but
+# trimming costs evidence.
+_WRITER_PROMPT_BUDGET = int(os.getenv("ATHENA_WRITER_PROMPT_BUDGET", "14000"))
+
+
+def _fit(research: str, sources: str, revision: str, system_len: int) -> tuple[str, str, str]:
+    """
+    Trim the writer's prompt to the budget, sacrificing the least useful part first.
+
+    Priority order, most protected first:
+      1. the revision block — without the previous draft, a "targeted revision"
+         silently becomes a rewrite, which is a correctness failure, not a
+         cosmetic one;
+      2. the retrieved passages — the only thing citations can point at;
+      3. the researcher's prose synthesis — the most redundant, since the
+         passages it summarises are already present verbatim.
+    """
+    room = _WRITER_PROMPT_BUDGET - system_len - 200  # 200 for the fixed scaffolding
+    if room <= 0:
+        return research[:500], sources[:1000], revision
+
+    if len(research) + len(sources) + len(revision) <= room:
+        return research, sources, revision
+
+    # 1. Squeeze the synthesis first.
+    keep_research = max(600, room - len(sources) - len(revision))
+    if len(research) > keep_research:
+        research = research[:keep_research].rstrip() + "\n[... synthesis truncated]"
+    if len(research) + len(sources) + len(revision) <= room:
+        return research, sources, revision
+
+    # 2. Then drop whole passages from the end — never mid-passage, which would
+    #    leave a citation pointing at half a sentence.
+    if sources:
+        blocks = sources.split("\n\n")
+        header, items = blocks[0], blocks[1:]
+        while items and len(research) + len("\n\n".join([header, *items])) + len(revision) > room:
+            items.pop()
+        sources = "\n\n".join([header, *items]) if items else ""
+    if len(research) + len(sources) + len(revision) <= room:
+        return research, sources, revision
+
+    # 3. Last resort: shorten the previous draft, keeping its head and tail so
+    #    the model still sees the structure it is meant to preserve.
+    if len(revision) > 1200:
+        revision = revision[:800] + "\n[... draft truncated ...]\n" + revision[-400:]
+    return research, sources, revision
+
 
 def writer_node(state: ResearchState) -> dict:
     """
@@ -237,6 +415,25 @@ def writer_node(state: ResearchState) -> dict:
 
     research_context = "\n\n---\n\n".join(state.get("search_results", []))
     feedback = state.get("human_feedback", "").strip()
+
+    # In document mode the writer is given the verbatim passages, numbered, in
+    # addition to the researcher's synthesis. Citing a synthesis is not citing a
+    # source: without the passages the [n] references would be fabricated, and
+    # the faithfulness metric would be scoring prose against prose.
+    chunks = state.get("retrieved_chunks", []) or []
+    sources_block = ""
+    if chunks:
+        listed = []
+        for i, c in enumerate(chunks[:12], start=1):
+            loc = f" — {c.get('locator')}" if c.get("locator") else ""
+            text = (c.get("text") or "").strip()
+            if len(text) > 700:
+                text = text[:700].rstrip() + "..."
+            listed.append(f"[{i}] {c.get('source', '?')}{loc}\n{text}")
+        sources_block = (
+            "\n\nRETRIEVED PASSAGES — cite these by number, and use no other source:\n"
+            + "\n\n".join(listed)
+        )
 
     revision_block = ""
     if feedback:
@@ -251,19 +448,79 @@ def writer_node(state: ResearchState) -> dict:
             f"Keep sections that were not mentioned identical to the previous draft."
         )
 
-    response = llm.invoke([
-        SystemMessage(content=WRITER_SYSTEM),
-        HumanMessage(content=(
-            f"Write a research report on: **{state['topic']}**\n\n"
-            f"Research gathered:\n{research_context}"
-            f"{revision_block}"
-        )),
-    ])
+    system = WRITER_DOCUMENTS_SYSTEM if _document_mode() else WRITER_SYSTEM
+
+    # Fit before calling, rather than discovering the overflow as an empty reply.
+    research_context, sources_block, revision_block = _fit(
+        research_context, sources_block, revision_block, len(system)
+    )
+
+    def _write(src_block: str) -> str:
+        resp = llm.invoke([
+            SystemMessage(content=system),
+            HumanMessage(content=(
+                f"Write a research report on: **{state['topic']}**\n\n"
+                f"Research gathered:\n{research_context}"
+                f"{src_block}"
+                f"{revision_block}"
+            )),
+        ])
+        return (resp.content or "").strip()
+
+    draft = _write(sources_block)
+
+    # An EMPTY draft must never be returned silently.
+    #
+    # Observed on the local backend: a question that retrieved 11 passages (the
+    # correct figure ranked first) produced a completely empty report. Retrieval
+    # was perfect; the writer returned "". The graph happily carried the empty
+    # string to the review gate, so the user would have been shown a blank report
+    # with no indication anything had gone wrong — and the eval could only detect
+    # it as a missing answer, which reads like a retrieval problem and sends you
+    # debugging the wrong component.
+    #
+    # The likely cause is prompt size: passages plus synthesis can exceed the
+    # local model's context window, and Ollama truncates from the front, cutting
+    # the instructions off. So the retry halves the evidence block rather than
+    # simply asking again, and a persistent failure becomes a LOUD, visible
+    # message instead of silence.
+    retried = False
+    if not draft and sources_block:
+        retried = True
+        half = max(1, len(chunks) // 2)
+        listed = []
+        for i, c in enumerate(chunks[:half], start=1):
+            loc = f" — {c.get('locator')}" if c.get("locator") else ""
+            text = (c.get("text") or "").strip()
+            if len(text) > 400:
+                text = text[:400].rstrip() + "..."
+            listed.append(f"[{i}] {c.get('source', '?')}{loc}\n{text}")
+        draft = _write(
+            "\n\nRETRIEVED PASSAGES — cite these by number, and use no other source:\n"
+            + "\n\n".join(listed)
+        )
+
+    if not draft:
+        draft = (
+            "## Report generation failed\n\n"
+            "The model returned an empty report for this question, even after "
+            "retrying with a reduced set of passages. This is a generation "
+            "failure, not an empty archive: "
+            f"{len(chunks)} relevant passage(s) were retrieved successfully.\n\n"
+            "The most likely cause is that the prompt exceeded the local model's "
+            "context window. Try a more specific question, raise OLLAMA_NUM_CTX, "
+            "or switch the backend to Groq.\n\n"
+            "No content is shown rather than a partial or invented one."
+        )
+
+    note = "Draft report generated."
+    if retried:
+        note = "Draft report generated (first attempt returned empty; retried with fewer passages)."
 
     return {
-        "draft_report": response.content,
+        "draft_report": draft,
         "human_feedback": "",   # reset — writer has consumed the feedback
-        "messages": [AIMessage(content="[Writer] Draft report generated.")],
+        "messages": [AIMessage(content=f"[Writer] {note}")],
     }
 
 

@@ -1,0 +1,113 @@
+{
+  "backend": "ollama",
+  "model": "qwen3.5:9b",
+  "reasoning": "true",
+  "wall_seconds": 1455.9,
+  "cases": [
+    {
+      "id": "q3_2025_revenue",
+      "question": "Wie hoch war der Umsatz in Q3 2025?",
+      "seconds": 185.7,
+      "words": 381,
+      "n_chunks": 8,
+      "answer_hit": true,
+      "context_figures_present": true,
+      "misattributed": false,
+      "retrieval_hit": true,
+      "ungrounded": [],
+      "ungrounded_count": 0,
+      "refusal_correct": null,
+      "invented_figure": null
+    },
+    {
+      "id": "auditor",
+      "question": "Wer hat den Jahresabschluss 2024 geprüft?",
+      "seconds": 167.3,
+      "words": 379,
+      "n_chunks": 6,
+      "answer_hit": true,
+      "context_figures_present": false,
+      "misattributed": null,
+      "retrieval_hit": true,
+      "ungrounded": [],
+      "ungrounded_count": 0,
+      "refusal_correct": null,
+      "invented_figure": null
+    },
+    {
+      "id": "equity_2024",
+      "question": "Wie hoch war das Eigenkapital zum 31.12.2024?",
+      "seconds": 242.5,
+      "words": 37,
+      "n_chunks": 6,
+      "answer_hit": true,
+      "context_figures_present": false,
+      "misattributed": false,
+      "retrieval_hit": true,
+      "ungrounded": [],
+      "ungrounded_count": 0,
+      "refusal_correct": null,
+      "invented_figure": null
+    },
+    {
+      "id": "revenue_2024_en",
+      "question": "What was total revenue in the 2024 financial year?",
+      "seconds": 223.1,
+      "words": 513,
+      "n_chunks": 10,
+      "answer_hit": true,
+      "context_figures_present": true,
+      "misattributed": false,
+      "retrieval_hit": true,
+      "ungrounded": [],
+      "ungrounded_count": 0,
+      "refusal_correct": null,
+      "invented_figure": null
+    },
+    {
+      "id": "invoice_1042",
+      "question": "Was war der Nettobetrag der Rechnung 2025-1042?",
+      "seconds": 237.9,
+      "words": 0,
+      "n_chunks": 6,
+      "answer_hit": false,
+      "context_figures_present": false,
+      "misattributed": false,
+      "retrieval_hit": true,
+      "ungrounded": [],
+      "ungrounded_count": 0,
+      "refusal_correct": null,
+      "invented_figure": null
+    },
+    {
+      "id": "headcount_2024",
+      "question": "Wie viele Mitarbeitende hatte das Unternehmen 2024?",
+      "seconds": 200.1,
+      "words": 384,
+      "n_chunks": 6,
+      "answer_hit": true,
+      "context_figures_present": true,
+      "misattributed": false,
+      "retrieval_hit": true,
+      "ungrounded": [],
+      "ungrounded_count": 0,
+      "refusal_correct": null,
+      "invented_figure": null
+    },
+    {
+      "id": "unanswerable_2027",
+      "question": "Wie hoch war der Umsatz im Jahr 2027?",
+      "seconds": 198.2,
+      "words": 413,
+      "n_chunks": 12,
+      "refusal_correct": true,
+      "invented_figure": true,
+      "answer_hit": null,
+      "wrong_figure": null,
+      "retrieval_hit": null,
+      "ungrounded": [
+        "2027"
+      ]
+    }
+  ]
+}
