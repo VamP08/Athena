@@ -215,11 +215,19 @@ def run_pipeline(topic: str):
         st.markdown(topic)
 
     from core.graph import make_initial_state
+    from core.ui_documents import bind_current_thread, ensure_session
+
+    # Attached documents belong to the BROWSER SESSION, not to this thread —
+    # a new thread_id is minted for every question, so keying on it would drop
+    # the user's uploads after their first message. The thread is recorded so
+    # teardown can scrub its checkpointed passages too.
+    session_id = ensure_session(st)
+    bind_current_thread(st)
 
     with st.chat_message("assistant", avatar=":material/local_library:"):
         with st.status("Working on it…", expanded=True) as status:
             for chunk in graph.stream(
-                make_initial_state(topic),
+                make_initial_state(topic, session_id=session_id),
                 config=config,
                 stream_mode="updates",
             ):
@@ -263,6 +271,10 @@ with st.sidebar:
         f'<div class="sb-row">{k} · <b>{v}</b></div>' for k, v in runtime_info().items()
     )
     st.markdown(rows, unsafe_allow_html=True)
+
+    from core.ui_documents import render_sidebar
+
+    render_sidebar(st)
 
     st.markdown('<div class="sb-label">How it works</div>', unsafe_allow_html=True)
     st.markdown(

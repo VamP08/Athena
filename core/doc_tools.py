@@ -47,6 +47,26 @@ VALID_DOC_TYPES = (
 )
 
 
+def _as_artifact(h: dict, scope: str) -> dict:
+    """
+    One retrieved passage as structured evidence for the writer and for Ragas.
+
+    `scope` rides along so a citation can state whether a source is archived or
+    attached — a reader must never confuse "this is in our records" with "this is
+    in the file you just handed me".
+    """
+    return {
+        "source": h["source"],
+        "locator": h.get("locator") or "",
+        "kind": h["kind"],
+        "doc_type": h.get("doc_type") or "",
+        "year": h.get("year") or "",
+        "text": h["text"],
+        "score": h.get("score"),
+        "scope": scope,
+    }
+
+
 def _fmt_hit(i: int, h: dict, budget: int) -> str:
     """One retrieved chunk, rendered so the model can cite it verbatim."""
     where = h.get("locator") or ""
@@ -162,6 +182,71 @@ def list_documents(doc_type: str = "", year: str = "") -> str:
     return "\n".join(lines)
 
 
-def get_document_tools() -> list:
-    """The tool set for document mode."""
-    return [document_search, list_documents]
+def get_document_tools(session_id: str = "") -> list:
+    """
+    The tool set for document mode.
+
+    With no session_id this is the archive-only pair, byte-identical to before.
+    With one, `document_search` is replaced by a closure that ALSO searches that
+    chat's attached files. The binding is a closure over one SessionStore object,
+    not a filter argument — so another chat has no reference to it and therefore
+    no way to reach it, even if a query or a filter were malformed.
+    """
+    if not session_id:
+        return [document_search, list_documents]
+
+    from . import sessions
+
+    store = sessions.REGISTRY.get(session_id)
+    if store is None:
+        return [document_search, list_documents]
+
+    @tool(response_format="content_and_artifact")
+    def search_documents(query: str, doc_type: str = "", year: str = "") -> tuple:
+        """Search the financial archive AND the documents attached to this chat.
+
+        Use this for every factual question. It searches by meaning and by exact
+        wording, across German and English documents. Results are shown in two
+        clearly separated groups: files ATTACHED TO THIS CHAT, and the permanent
+        ARCHIVE. When they disagree, say so and cite both — do not silently
+        prefer one.
+
+        Args:
+            query: What to look for. A natural question or keywords both work.
+            doc_type: Optional filter, e.g. invoice, ledger, statement, audit,
+                   contract, tax, budget, annual_report. Leave empty for all.
+            year: Optional four-digit year, e.g. "2024". Leave empty for all.
+        """
+        dt, yr = doc_type.strip(), year.strip()
+        # Deliberately NOT fused into one ranked list. RRF ranks are
+        # corpus-relative: rank 1 among 40 attached passages is not the same
+        # evidence strength as rank 1 among 900 archived ones, so merging them
+        # would silently promote whichever corpus is smaller.
+        session_hits = store.search(query, k=3, doc_type=dt, year=yr)
+        archive_hits = idx.search(query, k=_DEFAULT_K, doc_type=dt, year=yr)
+
+        if not session_hits and not archive_hits:
+            return (
+                f"Nothing in the attached documents or the archive matched '{query}'.",
+                [],
+            )
+
+        blocks, artifact, n = [], [], 0
+        per = max(300, _SEARCH_BUDGET // max(1, len(session_hits) + len(archive_hits)))
+
+        if session_hits:
+            blocks.append("ATTACHED TO THIS CHAT (not part of the archive):")
+            for h in session_hits:
+                n += 1
+                blocks.append(_fmt_hit(n, h, per))
+                artifact.append(_as_artifact(h, "session"))
+        if archive_hits:
+            blocks.append("\nARCHIVE (permanent records):")
+            for h in archive_hits:
+                n += 1
+                blocks.append(_fmt_hit(n, h, per))
+                artifact.append(_as_artifact(h, "knowledge_base"))
+
+        return "\n\n".join(blocks), artifact
+
+    return [search_documents, list_documents]

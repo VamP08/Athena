@@ -121,7 +121,7 @@ def build_graph(checkpointer=None):
     return g.compile(checkpointer=checkpointer or _make_checkpointer())
 
 
-def make_initial_state(topic: str) -> dict:
+def make_initial_state(topic: str, session_id: str = "") -> dict:
     """
     Returns a clean initial state dict for a new research session.
 
@@ -138,4 +138,5 @@ def make_initial_state(topic: str) -> dict:
         "next_agent": "",
         "human_feedback": "",
         "iterations": 0,
+        "session_id": session_id,
     }

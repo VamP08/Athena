@@ -134,7 +134,7 @@ def _document_mode() -> bool:
 
 # ── Tool selection ────────────────────────────────────────────────────────────
 
-def _get_search_tools() -> List[BaseTool]:
+def _get_search_tools(session_id: str = "") -> List[BaseTool]:
     """
     Returns search tools for the researcher agent.
 
@@ -150,7 +150,7 @@ def _get_search_tools() -> List[BaseTool]:
     if os.getenv("ATHENA_MODE", "web").lower() == "documents":
         from .doc_tools import get_document_tools
 
-        return get_document_tools()
+        return get_document_tools(session_id)
 
     if os.getenv("MCP_MODE", "false").lower() == "true":
         try:
@@ -324,7 +324,10 @@ def researcher_node(state: ResearchState) -> dict:
     Connects to either the FastMCP web server (MCP_MODE=true) or
     DuckDuckGo directly (MCP_MODE=false, default).
     """
-    tools = _get_search_tools()
+    # session_id comes from STATE, so each run can only ever reach the documents
+    # attached to its own chat. Two chats running concurrently in the same
+    # process get different tool objects bound to different stores.
+    tools = _get_search_tools(state.get("session_id", ""))
     synthesis, chunks = _execute_research(state["topic"], tools)
 
     note = f" — {len(chunks)} passages retrieved" if chunks else ""

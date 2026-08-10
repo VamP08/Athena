@@ -27,13 +27,14 @@ tests only.
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langgraph.types import Command
 from pydantic import BaseModel, Field
@@ -71,6 +72,11 @@ def require_auth(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
 
 class ResearchRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=500)
+    # Optional chat scope. When present, the run may also search the documents
+    # attached to THAT session and no other — the binding is a closure over one
+    # store, never a filter, so a wrong or stale id degrades to archive-only
+    # rather than exposing someone else's files.
+    session_id: str = Field(default="", max_length=64)
 
 
 class ResumeRequest(BaseModel):
@@ -108,9 +114,12 @@ def _finish(thread_id: str) -> None:
         registry.set_status(thread_id, "completed")
 
 
-def _run_research(thread_id: str, topic: str) -> None:
+def _run_research(thread_id: str, topic: str, session_id: str = "") -> None:
     try:
-        graph.invoke(make_initial_state(topic), config=_config(thread_id))
+        graph.invoke(
+            make_initial_state(topic, session_id=session_id),
+            config=_config(thread_id),
+        )
         _finish(thread_id)
     except Exception as e:  # surface the failure to clients, don't swallow it
         registry.set_status(thread_id, "failed", error=f"{type(e).__name__}: {e}")
@@ -143,7 +152,14 @@ def start_research(body: ResearchRequest):
     thread_id = str(uuid.uuid4())
     registry.create(thread_id, body.topic)
     registry.log_action(thread_id, "created", detail=body.topic)
-    _submit(_run_research, thread_id, body.topic)
+    if body.session_id:
+        # Record the pairing so ending the chat can scrub this thread's
+        # checkpointed passages too: destroying the store alone is not enough,
+        # because retrieved text also lands in the checkpointer.
+        from core import sessions
+
+        sessions.bind_thread(body.session_id, thread_id)
+    _submit(_run_research, thread_id, body.topic, body.session_id)
     return JobResponse(thread_id=thread_id, status="running")
 
 
@@ -199,6 +215,97 @@ def get_audit(thread_id: str):
 @app.get("/research", dependencies=[Depends(require_auth)])
 def list_research(limit: int = 20):
     return {"threads": registry.list_recent(limit=min(limit, 100))}
+
+
+# ── Documents ─────────────────────────────────────────────────────────────────
+#
+# Two tiers, deliberately separate endpoints:
+#   /documents/archive   the persistent knowledge base — read-only here, built
+#                        by ingest.py. Uploading to it through the API is NOT
+#                        offered: the archive is an operator-curated folder, and
+#                        an endpoint that silently grows it would make "what is
+#                        in our records" untrackable.
+#   /sessions/{id}/...   documents attached to one chat. Ephemeral by design.
+
+_UPLOAD_SUFFIXES = {".pdf", ".xlsx", ".xlsm", ".docx", ".csv", ".md", ".txt"}
+_MAX_UPLOAD_BYTES = int(os.getenv("ATHENA_MAX_UPLOAD_MB", "25")) * 1024 * 1024
+
+
+@app.get("/documents/archive", dependencies=[Depends(require_auth)])
+def archive_status():
+    """What the permanent archive currently holds."""
+    from core import index as idx
+
+    try:
+        return idx.index_stats()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Archive unavailable: {e}") from e
+
+
+@app.post(
+    "/sessions/{session_id}/documents",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_auth)],
+)
+async def attach_document(session_id: str, file: UploadFile = File(...)):
+    """
+    Attach one document to a chat. It never enters the persistent archive.
+
+    The filename is used only for display and for its suffix; it never builds a
+    path, so a name like "../../athena_index.db" cannot escape anywhere.
+    """
+    from core import sessions
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in _UPLOAD_SUFFIXES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported type '{suffix}'. Allowed: {sorted(_UPLOAD_SUFFIXES)}",
+        )
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty file")
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+        )
+
+    store = sessions.get_or_create(session_id)
+    result = store.add_document(file.filename, data)
+    if not result.get("ok"):
+        raise HTTPException(status_code=409, detail=result.get("error", "Attach failed"))
+    return result
+
+
+@app.get("/sessions/{session_id}/documents", dependencies=[Depends(require_auth)])
+def list_session_documents(session_id: str):
+    """What is attached to this chat. 404 if the chat has none or has expired."""
+    from core import sessions
+
+    store = sessions.REGISTRY.get(session_id)
+    if store is None:
+        raise HTTPException(status_code=404, detail="Unknown or expired session_id")
+    return {"session_id": session_id, "stats": store.stats(),
+            "documents": store.list_documents()}
+
+
+@app.delete("/sessions/{session_id}", dependencies=[Depends(require_auth)])
+def end_session(session_id: str):
+    """
+    End a chat: drop its documents AND scrub the checkpointed passages.
+
+    Both halves are required. Retrieved text also lives in graph state and
+    message history, so destroying the store alone would leave verbatim copies
+    of an uploaded document in the checkpointer — and "it disappears when the
+    chat ends" would be false at the byte level.
+    """
+    from core import sessions
+
+    if sessions.REGISTRY.get(session_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown or expired session_id")
+    return sessions.end_session(session_id, checkpointer=getattr(graph, "checkpointer", None))
 
 
 @app.get("/health")

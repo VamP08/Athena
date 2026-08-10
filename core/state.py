@@ -45,3 +45,10 @@ class ResearchState(TypedDict):
 
     # Tracks how many supervisor cycles have run (prevents infinite loops)
     iterations: int
+
+    # Which chat's attached documents this run may see. Carried in STATE rather
+    # than a module global on purpose: one process serves many browser sessions
+    # and many API threads at once, so a global would let one chat's uploads
+    # reach another's answers — the one failure this tier exists to prevent.
+    # Empty string means "archive only".
+    session_id: str
