@@ -282,6 +282,14 @@ def run_case(case: dict, idx_n: int, total: int) -> dict:
         "seconds": round(elapsed, 1),
         "words": len(report.split()),
         "n_chunks": len(chunks),
+        # The report text is saved because EVERY flag this harness has raised
+        # needed the underlying prose to adjudicate, and four of the first six
+        # turned out to be defects in the metric rather than the system. Without
+        # it, each check costs a full re-run — minutes of local generation — and
+        # the temptation is to accept the number instead. Also keep the sentences
+        # containing each flagged figure, so an ambiguous value like 1845200000
+        # can be read as either "18.452.000.00" or "1.845.200.000" immediately.
+        "report": report,
     }
 
     if case["unanswerable"]:
@@ -291,7 +299,15 @@ def run_case(case: dict, idx_n: int, total: int) -> dict:
         # Numbers echoed from the QUESTION are excluded: answering "the archive
         # holds no 2027 revenue" necessarily repeats 2027, and counting that as a
         # fabrication marked a correct refusal as a failure in the first run.
-        invented = numbers_in(report) - numbers_in(chunk_text) - numbers_in(case["question"])
+        # _derivable must be applied HERE TOO. It was originally added only to
+        # the answerable branch, so a refusal that correctly said "the archive
+        # holds 2024 but not 2027" and quoted a computed year-on-year difference
+        # was scored as inventing a figure. One branch forgiving arithmetic while
+        # the other punishes it is an inconsistency in the metric, not a finding.
+        grounded_u = numbers_in(chunk_text)
+        cand_u = numbers_in(report) - grounded_u - numbers_in(case["question"])
+        invented = {v for v in cand_u if not _derivable(v, grounded_u)}
+        res["derived_figures"] = sorted(str(x) for x in (cand_u - invented))[:5]
         res["refusal_correct"] = looks_like_refusal(report)
         res["invented_figure"] = bool(invented)
         res["answer_hit"] = None

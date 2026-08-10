@@ -17,6 +17,14 @@ eval/results.csv
 
 # Local state (sqlite checkpointer + registry)
 *.db
+*.db-wal
+*.db-shm
+
+# Generated scale-test archive: reproducible from a seed, so the bytes are not
+# worth versioning (corpus_tools/generate_scale_corpus.py --docs N --seed S).
+corpus_scale/
+corpus_scale_groundtruth.json
+eval/retrieval_*.json
 
 # IDE
 .vscode/

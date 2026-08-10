@@ -1,4 +1,4 @@
-"""
+﻿"""
 ingest.py
 Build (or refresh) the document index for Athena's document mode.
 
@@ -25,8 +25,13 @@ load_dotenv()
 from core.index import DEFAULT_CORPUS_DIR, DEFAULT_EMBED_MODEL, build_index, index_stats  # noqa: E402
 
 
-def _print_stats() -> None:
-    s = index_stats()
+def _print_stats(index_path: str | None = None) -> None:
+    # The path must be threaded through: without it this reported on the DEFAULT
+    # index while --index built a different one, so a scale-corpus ingest printed
+    # the demo corpus's document types and looked like it had indexed the wrong
+    # files. A summary that describes a different database than the one you just
+    # wrote is worse than no summary.
+    s = index_stats(index_path)
     print(f"Index:        {s['index_path']}")
     print(f"Model:        {s['embed_model']}")
     print(f"Documents:    {s['documents']}")
@@ -51,7 +56,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.stats:
-        _print_stats()
+        _print_stats(args.index)
         return 0
 
     t0 = time.time()
@@ -65,7 +70,7 @@ def main() -> int:
     )
     wall = time.time() - t0
 
-    print("\n── Ingest complete ──")
+    print("\n-- Ingest complete --")
     print(f"Files seen:     {stats['files_seen']}")
     print(f"Files indexed:  {stats['files_indexed']}")
     print(f"Files skipped:  {stats['files_skipped']} (unchanged)")
@@ -75,7 +80,7 @@ def main() -> int:
     print(f"Embedding time: {stats['embed_seconds']:.1f}s of {wall:.1f}s total")
     print(f"Model:          {stats['model']}")
     print()
-    _print_stats()
+    _print_stats(args.index)
     return 0
 
 

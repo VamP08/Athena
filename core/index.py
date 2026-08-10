@@ -431,6 +431,34 @@ def build_index(
 
 _FTS_TOKEN = re.compile(r"[^\W_]+", re.UNICODE)
 
+# How much a lexical hit counts when the query contains nothing literal to match.
+# 0.0 would disable BM25 entirely on prose queries; a small non-zero weight keeps
+# it as a tie-breaker and as insurance against an embedding failure, without
+# letting it outvote the dense ranker. Tune only with the retrieval eval.
+_LEXICAL_SOFT_WEIGHT = float(os.getenv("ATHENA_LEXICAL_SOFT_WEIGHT", "0.25"))
+
+# A "literal anchor" is something BM25 can match exactly and an embedding tends
+# to blur: a document/reference code, an account number, an invoice number, an
+# IBAN, or a figure. Their presence is what makes the lexical channel reliable.
+# A bare four-digit YEAR must not qualify. Every query in a financial archive
+# carries one, and hundreds of documents share it, so it identifies nothing —
+# treating it as an anchor gave the lexical channel full weight on every query
+# and made this whole mechanism a no-op (measured: results byte-identical to
+# equal-weight RRF). Anchors are things that pick out a handful of documents.
+_ANCHOR = re.compile(
+    r"\d{1,3}(?:[.,]\d{3})+"        # grouped figure: 128.400  1.234.567
+    r"|\d{5,}"                      # long bare run: 4821000 (a year is only 4)
+    r"|\b[A-Z]{2,}[-_/]?\d+\b"      # BEL-2024-3015, DE44, INV/778
+    r"|\b\d{4}[-_/]\w+[-_/]\w+\b"   # 2025-Q3-00123 (year PLUS more structure)
+    r"|\b\w*\d+[-_/]\d{3,}\b",      # 3015-4711 style pairs
+    re.UNICODE,
+)
+
+
+def _has_literal_anchor(query: str) -> bool:
+    """True when the query carries an exact token BM25 can be trusted on."""
+    return bool(_ANCHOR.search(query or ""))
+
 
 def _fts_query(raw: str) -> str:
     """
@@ -484,9 +512,17 @@ def search_conn(
     year: str = "",
     rrf_k: int = 60,
     depth: int = 50,
+    channel: str = "hybrid",
 ) -> list[dict]:
     """
     Hybrid retrieval: dense cosine + FTS5 bm25, fused with Reciprocal Rank Fusion.
+
+    `channel` selects which rankers run: "hybrid" (both, the product behaviour),
+    "dense" or "lexical". The single-channel modes exist for evaluation only —
+    hybrid is a documented design decision and should be re-justified with
+    measured recall per query type rather than inherited on faith. They are also
+    the fastest way to diagnose a recall regression: if dense collapses and
+    lexical holds, the embedding model or its index is at fault, not the fusion.
 
     RRF score = sum over rankers of 1 / (rrf_k + rank). It needs no score
     normalisation between two incomparable scales (cosine distance and bm25),
@@ -506,6 +542,8 @@ def search_conn(
 
     dense: list[int] = []
     try:
+        if channel == "lexical":
+            raise RuntimeError("dense channel disabled")
         qvec = _serialize(get_embeddings(_meta_get(conn, "embed_model")).embed_query(query))
         with lock:
             rows = conn.execute(
@@ -519,7 +557,7 @@ def search_conn(
         dense = []
 
     lexical: list[int] = []
-    match = _fts_query(query)
+    match = "" if channel == "dense" else _fts_query(query)
     if match:
         try:
             with lock:
@@ -534,10 +572,26 @@ def search_conn(
         except Exception:
             lexical = []
 
+    # Weighted RRF, and the weights are not arbitrary — they come from measurement.
+    #
+    # Equal-weight RRF made hybrid WORSE than dense alone (MRR 0.923 vs 0.937,
+    # hit@1 0.864 vs 0.883 over 360 queries on an 18,591-chunk archive). The
+    # cause: BM25 scores hit@1 = 0.138 on paraphrased and synonym queries, barely
+    # above noise, because an OR of common tokens matches half the archive in a
+    # repetitive financial corpus. Giving a near-random ranker an equal vote
+    # drags a good one down.
+    #
+    # But lexical is not useless — it is 1.000 on exact identifiers and amount
+    # lookups, where dense dips to 0.975. The channels are complementary only
+    # when the query carries something literal to match. So its weight is full
+    # when the query contains a literal anchor (a reference code, a figure) and
+    # discounted otherwise. Dense keeps full weight throughout.
+    lex_weight = 1.0 if _has_literal_anchor(query) else _LEXICAL_SOFT_WEIGHT
+
     scores: dict[int, float] = {}
-    for ranked in (dense, lexical):
+    for ranked, weight in ((dense, 1.0), (lexical, lex_weight)):
         for rank, cid in enumerate(ranked, start=1):
-            scores[cid] = scores.get(cid, 0.0) + 1.0 / (rrf_k + rank)
+            scores[cid] = scores.get(cid, 0.0) + weight / (rrf_k + rank)
 
     if not scores:
         return []
@@ -567,6 +621,19 @@ def search_conn(
         rec.setdefault("scope", "knowledge_base")
         out.append(rec)
     return out
+
+
+def search_channel(
+    query: str,
+    k: int = 6,
+    index_path: str | None = None,
+    channel: str = "hybrid",
+    depth: int = 50,
+) -> list[dict]:
+    """Single-channel search, for evaluation. See search_conn's `channel` note."""
+    return search_conn(
+        connect(index_path), _LOCK, query, k=k, depth=depth, channel=channel,
+    )
 
 
 def list_documents(doc_type: str = "", year: str = "", index_path: str | None = None) -> list[dict]:
