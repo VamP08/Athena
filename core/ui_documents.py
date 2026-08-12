@@ -101,9 +101,16 @@ def render_sidebar(st) -> None:
         st.caption(f"Archive unavailable: {e}")
 
     if has_index:
+        # Tables are shown next to passages because they are a different
+        # capability, not a subset: passages are what search can find, rows are
+        # what counting is exact over.
+        countable = (
+            f" · {stats['fact_tables']} countable tables ({stats['fact_rows']} rows)"
+            if stats.get("fact_tables") else ""
+        )
         st.caption(
             f"**Archive** · {stats['documents']} documents · "
-            f"{stats['chunks']} passages · `{stats['embed_model']}`"
+            f"{stats['chunks']} passages{countable} · `{stats['embed_model']}`"
         )
         if stats.get("years"):
             st.caption("Years: " + ", ".join(y for y in stats["years"] if y))

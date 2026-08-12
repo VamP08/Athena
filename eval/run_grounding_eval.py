@@ -349,6 +349,19 @@ def run_case(case: dict, idx_n: int, total: int) -> dict:
 
 
 def main() -> int:
+    # This harness is meant to gate CI, where stdout is a pipe rather than a
+    # console — and on Windows a redirected stdout defaults to cp1252, which
+    # cannot encode the box-drawing characters or the German text in the report.
+    # A full 7-case run (≈20 minutes) then died on the FIRST summary line, after
+    # every case had been scored but BEFORE --out was written, so the entire run
+    # was lost to a print. Encoding is fixed here rather than left to the caller
+    # to remember an environment variable.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):  # already wrapped, or not a TextIO
+            pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--reasoning", choices=["on", "off"], default=None,
                     help="force the local model's thinking trace on or off")

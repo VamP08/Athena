@@ -138,7 +138,8 @@ documents in two different formats, then writes a cited report.
 | **German + English** | A question in one language finds documents in the other |
 | **Legacy exports** | cp1252 semicolon-delimited CSVs (what German accounting software emits) decode correctly |
 | **What it *cannot* read** | A scanned PDF or a formula-only spreadsheet total is reported as a **visible limitation**, never silently treated as absent — in a financial archive, "unreadable" and "not there" are different answers |
-| **Counting questions** | A `list_documents` tool exposes the corpus inventory, because semantic search structurally cannot answer "how many invoices are there" |
+| **Counting and totals** | Quantities never go through the retriever. Top-k returns 6 rows of 60, and adding those up is a *confidently* wrong total that gets worse as the archive grows — so every table is also queried relationally, and `aggregate_documents` counts every matching row |
+| **Numbers that must not be added** | A running balance already contains every row before it, so summing `Saldo` is meaningless while looking exactly like money. The tool refuses it and returns the closing balance instead — likewise for account codes, rates, and a table's own `Summe` rows, which would otherwise be counted twice |
 
 The demo corpus is **synthetic by design** — the archive of a fictional logistics
 company, generated from a fixed seed. Committing real financial records to a public

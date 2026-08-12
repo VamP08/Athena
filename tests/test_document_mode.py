@@ -314,7 +314,7 @@ def test_document_mode_selects_document_tools(monkeypatch):
 
     monkeypatch.setenv("ATHENA_MODE", "documents")
     names = {t.name for t in _get_search_tools()}
-    assert names == {"document_search", "list_documents"}
+    assert names == {"document_search", "list_documents", "aggregate_documents"}
 
     monkeypatch.setenv("ATHENA_MODE", "web")
     assert "web_search" in {t.name for t in _get_search_tools()}

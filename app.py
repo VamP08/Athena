@@ -153,10 +153,15 @@ def model_picker():
 
 
 def runtime_info() -> dict:
-    tools = (
-        "MCP server" if os.getenv("MCP_MODE", "false").lower() == "true"
-        else "In-process web search"
-    )
+    # Document mode swaps the tool set entirely and never touches the web, so
+    # reporting "web search" there is not a cosmetic slip — the runtime panel is
+    # where a reader checks the claim that nothing left the machine.
+    if os.getenv("ATHENA_MODE", "web").lower() == "documents":
+        tools = "Local archive: search + inventory + exact aggregation"
+    elif os.getenv("MCP_MODE", "false").lower() == "true":
+        tools = "MCP server"
+    else:
+        tools = "In-process web search"
     return {
         "Tools": tools,
         "State": os.getenv("ATHENA_CHECKPOINTER", "memory"),

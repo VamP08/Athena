@@ -72,10 +72,16 @@ def test_tools_bound_to_one_chat_cannot_see_another(monkeypatch, tmp_path):
 
 
 def test_no_session_id_yields_the_archive_only_toolset(monkeypatch, tmp_path):
-    """A run with no chat bound must behave exactly as before this feature."""
+    """
+    A run with no chat bound gets the archive-only search tool.
+
+    The name matters, not just the count: `document_search` searches the archive
+    alone, while `search_documents` is the session-bound closure. Getting the
+    latter here would mean an unbound run could reach another chat's uploads.
+    """
     _setup(monkeypatch, tmp_path)
     names = sorted(t.name for t in doc_tools.get_document_tools(""))
-    assert names == ["document_search", "list_documents"]
+    assert names == ["aggregate_documents", "document_search", "list_documents"]
     idx.close()
 
 
@@ -86,7 +92,7 @@ def test_unknown_session_id_falls_back_to_archive_not_an_error(monkeypatch, tmp_
     """
     _setup(monkeypatch, tmp_path)
     names = sorted(t.name for t in doc_tools.get_document_tools("does-not-exist"))
-    assert names == ["document_search", "list_documents"]
+    assert names == ["aggregate_documents", "document_search", "list_documents"]
     idx.close()
 
 

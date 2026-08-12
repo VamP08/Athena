@@ -71,14 +71,22 @@ Instructions:
    list_documents FIRST so you know what the archive actually contains.
 2. Use document_search for every fact. Run several searches covering different
    angles and different wordings — figures, account names, periods, parties.
-3. Documents are in German and English. If a German search returns little, try the
+3. For ANY quantity — how many, the total, the average, the largest — call
+   aggregate_documents. NEVER count or add up rows you saw in search results:
+   search returns only the few most relevant rows, so totalling them yourself
+   gives a confidently wrong number. aggregate_documents reads every row.
+   If it REFUSES a column, do not work around it — it is refusing because that
+   sum would be meaningless; use the column it suggests instead.
+   If it returns a line starting with CHECK, carry that caveat into your
+   synthesis rather than dropping it.
+4. Documents are in German and English. If a German search returns little, try the
    English wording of the same idea, and vice versa.
-4. Copy figures EXACTLY as they appear, including the original number format
+5. Copy figures EXACTLY as they appear, including the original number format
    (e.g. 4.821.000,00 EUR). Never round, convert, or recalculate a figure.
-5. Record which document and locator each fact came from — the report must cite them.
-6. If the archive does not contain something, say so plainly. Never fill a gap
+6. Record which document and locator each fact came from — the report must cite them.
+7. If the archive does not contain something, say so plainly. Never fill a gap
    from general knowledge; an invented figure is far worse than a stated gap.
-7. If a document is reported as only partly indexed (a scan, or formula-only
+8. If a document is reported as only partly indexed (a scan, or formula-only
    totals), mention that limitation rather than treating it as absent.
 
 After searching, write a detailed synthesis of what you found, with the source
@@ -125,6 +133,10 @@ _DEFAULT_TOOL_BUDGET = 3000
 _TOOL_CHAR_BUDGET = {
     "document_search": int(os.getenv("ATHENA_SEARCH_CHAR_BUDGET", "6000")) + 800,
     "list_documents": 4000,
+    # An aggregate answer is short, but its provenance and its CHECK warnings
+    # trail it — and truncation here cuts from the end, so too small a budget
+    # keeps the number and drops the caveats that make it safe to quote.
+    "aggregate_documents": 4000,
 }
 
 
@@ -138,7 +150,8 @@ def _get_search_tools(session_id: str = "") -> List[BaseTool]:
     """
     Returns search tools for the researcher agent.
 
-    ATHENA_MODE=documents → the document archive (document_search + list_documents)
+    ATHENA_MODE=documents → the document archive (document_search, list_documents,
+                            aggregate_documents)
     MCP_MODE=true         → connects to the FastMCP web server (run web_server.py first)
     otherwise             → the in-process ddgs web_search tool (default, cloud-safe)
 

@@ -39,6 +39,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import facts as fx
 from .documents import ParsedElement, content_hash, iter_corpus, parse_file
 
 DEFAULT_INDEX_PATH = os.getenv("ATHENA_INDEX_PATH", "athena_index.db")
@@ -174,7 +175,26 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         END;
         """
     )
+    # The relational half of the index: every table row, uncapped, for exact
+    # aggregation. Retrieval and counting are different questions and this is
+    # where they get different machinery (see core/facts.py).
+    conn.executescript(fx.SCHEMA)
+    _ensure_column(conn, "documents", "facts_at", "REAL")
+    _ensure_column(conn, "fact_tables", "layout", "TEXT")
     conn.commit()
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, col: str, decl: str) -> None:
+    """
+    Add a column to an existing database if it is missing.
+
+    Aggregation shipped after the index did, so an index built by the previous
+    version is on disk and must not have to be rebuilt from scratch to gain the
+    feature — a rebuild costs a full re-embed of the whole corpus.
+    """
+    have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if col not in have:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def _meta_get(conn, key, default=None):
@@ -272,6 +292,59 @@ def _infer_year(name: str, text_sample: str = "") -> str:
     return ""
 
 
+def _extract_tables(elements, doc_id, source, doc_type, year, progress=None) -> list[dict]:
+    """Every table payload a parser attached, turned into storable fact records."""
+    out = []
+    for el in elements:
+        payload = (el.meta or {}).get("table")
+        if not payload:
+            continue
+        try:
+            rec = fx.extract_table(
+                payload, doc_id=doc_id, source=source,
+                doc_type=doc_type, year=year, table_id=el.table_id,
+            )
+        except Exception as e:  # noqa: BLE001
+            if progress:
+                progress(f"  table extraction failed ({el.table_id}): {e}")
+            continue
+        if rec:
+            out.append(rec)
+    return out
+
+
+def _backfill_facts(conn, path, doc_id, progress=None) -> tuple[int, int]:
+    """
+    Extract facts for a document that is already indexed, without re-embedding.
+
+    `facts_at` is stamped even when the document yields no tables at all. Without
+    that marker a prose-only PDF would be re-parsed on every single ingest,
+    forever, looking for tables it does not have.
+    """
+    with _LOCK:
+        row = conn.execute(
+            "SELECT doc_type, year FROM documents WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+    doc_type = row["doc_type"] if row else ""
+    year = row["year"] if row else ""
+
+    try:
+        _, elements = parse_file(path)
+    except Exception as e:  # noqa: BLE001
+        if progress:
+            progress(f"  backfill parse failed for {path.name}: {e}")
+        return (0, 0)
+
+    tables = _extract_tables(elements, doc_id, path.name, doc_type, year, progress)
+    with _LOCK:
+        fx.clear_doc(conn, doc_id)
+        for rec in tables:
+            fx.store_table(conn, rec)
+        conn.execute("UPDATE documents SET facts_at=? WHERE doc_id=?", (time.time(), doc_id))
+        conn.commit()
+    return (len(tables), sum(r["n_rows"] for r in tables))
+
+
 def build_index(
     corpus_dir: str | None = None,
     index_path: str | None = None,
@@ -297,6 +370,7 @@ def build_index(
     stats = {
         "files_seen": 0, "files_indexed": 0, "files_skipped": 0,
         "chunks": 0, "notices": 0, "errors": 0, "embed_seconds": 0.0,
+        "fact_tables": 0, "fact_rows": 0,
         "model": model,
     }
 
@@ -307,6 +381,7 @@ def build_index(
         with _LOCK:
             conn.executescript(
                 "DELETE FROM chunks; DELETE FROM chunks_fts; DELETE FROM documents;"
+                "DELETE FROM fact_values; DELETE FROM facts; DELETE FROM fact_tables;"
             )
             conn.commit()
     with _LOCK:
@@ -322,11 +397,21 @@ def build_index(
         present.add(doc_id)
         with _LOCK:
             seen = conn.execute(
-                "SELECT doc_id FROM documents WHERE doc_id=?", (doc_id,)
+                "SELECT doc_id, facts_at FROM documents WHERE doc_id=?", (doc_id,)
             ).fetchone()
         if seen and not rebuild:
             stats["files_skipped"] += 1
-            if progress:
+            # An index built before aggregation existed holds chunks but no
+            # facts. Backfilling costs one parse and NO embedding, which is the
+            # whole reason it is worth doing here rather than telling the
+            # operator to rebuild: re-embedding a real corpus takes hours.
+            if seen["facts_at"] is None:
+                n = _backfill_facts(conn, path, doc_id, progress)
+                stats["fact_tables"] += n[0]
+                stats["fact_rows"] += n[1]
+                if progress and n[0]:
+                    progress(f"backfilled {n[0]} table(s) from {path.name}")
+            elif progress:
                 progress(f"skip (unchanged): {path.name}")
             continue
 
@@ -368,18 +453,31 @@ def build_index(
                     progress(f"  embedded {done}/{len(indexable)} chunks of {path.name}")
             stats["embed_seconds"] += time.time() - t0
 
+        # Every table this document contains, in full. Extraction happens before
+        # the write so a malformed table cannot leave a half-written document
+        # behind; it is deliberately not allowed to fail the ingest, because a
+        # table that resists classification should cost aggregation, not search.
+        tables = _extract_tables(elements, doc_id, path.name, doc_type, year, progress)
+
         with _LOCK:
             conn.execute("DELETE FROM chunks WHERE doc_id=?", (doc_id,))
+            # Facts are keyed by doc_id and MUST go before the insert. doc_id is
+            # a content hash, so this only ever fires on an explicit rebuild of
+            # the same bytes — but without it that rebuild silently doubles every
+            # SUM in the archive, and a doubled total looks exactly like a real one.
+            fx.clear_doc(conn, doc_id)
             conn.execute(
                 "INSERT OR REPLACE INTO documents"
-                "(doc_id,source,rel_path,doc_type,year,n_elements,parse_status,parse_note,ingested_at)"
-                " VALUES(?,?,?,?,?,?,?,?,?)",
+                "(doc_id,source,rel_path,doc_type,year,n_elements,parse_status,parse_note,"
+                "ingested_at,facts_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (
                     doc_id, path.name, str(path), doc_type, year, len(to_store),
                     "error" if stats and any(
                         n.meta.get("reason") == "parse_error" for n in notices
                     ) else ("partial" if notices else "ok"),
                     json.dumps([n.meta.get("reason") for n in notices]) if notices else None,
+                    time.time(),
                     time.time(),
                 ),
             )
@@ -398,10 +496,14 @@ def build_index(
                         _serialize(vec) if vec else None,
                     ),
                 )
+            for rec in tables:
+                fx.store_table(conn, rec)
             conn.commit()
 
         stats["files_indexed"] += 1
         stats["chunks"] += len(to_store)
+        stats["fact_tables"] += len(tables)
+        stats["fact_rows"] += sum(r["n_rows"] for r in tables)
 
     # Reconcile the index against the folder.
     #
@@ -418,6 +520,7 @@ def build_index(
         for doc_id in stale:
             conn.execute("DELETE FROM chunks WHERE doc_id=?", (doc_id,))
             conn.execute("DELETE FROM documents WHERE doc_id=?", (doc_id,))
+            fx.clear_doc(conn, doc_id)
         if stale:
             conn.commit()
     stats["files_removed"] = len(stale)
@@ -666,6 +769,21 @@ def list_documents_conn(
     return [dict(r) for r in rows]
 
 
+# ── exact aggregation ────────────────────────────────────────────────────────
+#
+# Counting does not go through search. See core/facts.py for why top-k is the
+# wrong instrument for "how many" and what it takes to be exactly right instead.
+
+def aggregate(index_path: str | None = None, **kw) -> dict:
+    """Exact aggregate over every matching table row. See facts.aggregate."""
+    return fx.aggregate(connect(index_path), _LOCK, **kw)
+
+
+def tables_overview(index_path: str | None = None) -> list[dict]:
+    """Every aggregatable table with its columns and their roles."""
+    return fx.available_columns(connect(index_path), _LOCK)
+
+
 def index_stats(index_path: str | None = None) -> dict:
     """Summary used by the UI, /health, and the tool docstrings."""
     conn = connect(index_path)
@@ -686,10 +804,13 @@ def index_stats(index_path: str | None = None) -> dict:
             ).fetchall()
         ]
         model = _meta_get(conn, "embed_model", "")
+    counts = fx.fact_stats(conn, _LOCK)
     return {
         "documents": docs,
         "chunks": chunks,
         "embedded_chunks": embedded,
+        "fact_tables": counts["tables"],
+        "fact_rows": counts["rows"],
         "doc_types": types,
         "years": years,
         "embed_model": model,

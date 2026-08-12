@@ -45,6 +45,10 @@ SUPPORTED_SUFFIXES = {".pdf", ".xlsx", ".xlsm", ".docx", ".csv", ".md", ".txt"}
 # always announced in the table summary element (see _sheet_summary).
 MAX_ROWS_EMBEDDED = int(os.getenv("ATHENA_MAX_ROWS_EMBEDDED", "2000"))
 
+# The cap on rows carried for EXACT AGGREGATION, which is a different and much
+# larger number. See _table_payload for why the two caps must not be the same.
+MAX_ROWS_TABULATED = int(os.getenv("ATHENA_MAX_ROWS_TABULATED", "200000"))
+
 # Below this many characters, a PDF page is treated as having no text layer
 # (i.e. a scan). We never silently return nothing for such a page.
 _SCAN_TEXT_THRESHOLD = 20
@@ -149,6 +153,43 @@ def _row_text(headers: list[str], cells: list[str]) -> str:
     return " | ".join(parts)
 
 
+def _table_payload(
+    headers: list[str],
+    rows: list[tuple[int, str, list[str]]],
+    n_indexed: int,
+    **anchor,
+) -> dict:
+    """
+    The FULL table, attached to its `table_summary` element for exact aggregation.
+
+    This is where retrieval and aggregation part company, and they have to.
+    Retrieval is capped at MAX_ROWS_EMBEDDED because a 50k-row ledger would
+    otherwise swamp the index — and the cap is harmless there, since top-k
+    returns a handful of rows however many exist. Counting is the opposite:
+    "how many invoices in Q3" is WRONG unless every row is seen, and wrong by a
+    margin that grows silently as the corpus grows. Deriving a total from the
+    indexed chunks would therefore report 2000 invoices for a 34,000-row
+    register and look entirely confident doing it.
+
+    So the rows travel here in full, uncapped at the retrieval limit, and never
+    reach the embedder. MAX_ROWS_TABULATED still bounds memory, but it is a
+    stated bound two orders of magnitude above the other one, and exceeding it
+    is announced rather than silently truncated (see the callers' notices).
+
+    `rows` is a list of (row_number, locator, cells) — the locator is built by
+    the parser so a fact and the chunk it came from cite the same anchor.
+    """
+    capped = rows[:MAX_ROWS_TABULATED]
+    return {
+        "headers": headers,
+        "rows": [{"row": r, "locator": loc, "cells": cells} for r, loc, cells in capped],
+        "n_rows_total": len(rows),
+        "n_rows_tabulated": len(capped),
+        "n_rows_indexed": n_indexed,
+        **anchor,
+    }
+
+
 def _markdown_table(headers: list[str], rows: list[list[str]], limit: int = 40) -> str:
     out = []
     if headers:
@@ -238,6 +279,15 @@ def _parse_pdf(path: Path, doc_id: str) -> list[ParsedElement]:
                     f"Tabelle {ti} auf Seite {pno} von {src}:\n"
                     + _markdown_table(headers, body),
                     locator=f"S. {pno}, Tabelle {ti}", page=pno, table_id=tid,
+                    meta={"table": _table_payload(
+                        headers,
+                        [
+                            (ri, f"S. {pno}, Tabelle {ti}, Zeile {ri}", cells)
+                            for ri, cells in enumerate(body, start=1)
+                        ],
+                        n_indexed=len(body),
+                        page=pno,
+                    )},
                 ))
 
                 for ri, cells in enumerate(body, start=1):
@@ -331,6 +381,15 @@ def _parse_xlsx(path: Path, doc_id: str) -> list[ParsedElement]:
                 f"Arbeitsblatt '{ws.title}' aus {src} "
                 f"({len(body_all)} Datenzeilen):\n" + _markdown_table(headers, body_str),
                 locator=f"{ws.title}", sheet=ws.title, table_id=tid,
+                meta={"table": _table_payload(
+                    headers,
+                    [
+                        (ri, f"{ws.title}!Z{ri}", [_norm_cell(c) for c in r])
+                        for ri, r in enumerate(body_all, start=2)
+                    ],
+                    n_indexed=len(capped),
+                    sheet=ws.title,
+                )},
             ))
 
             for ri, r in enumerate(capped, start=2):  # row 1 is the header
@@ -429,6 +488,14 @@ def _parse_csv(path: Path, doc_id: str) -> list[ParsedElement]:
         f"{src} ({len(body)} Datenzeilen):\n"
         + _markdown_table(headers, [[_norm_cell(c) for c in r] for r in capped]),
         table_id=tid,
+        meta={"table": _table_payload(
+            headers,
+            [
+                (ri, f"Zeile {ri}", [_norm_cell(c) for c in r])
+                for ri, r in enumerate(body, start=2)
+            ],
+            n_indexed=len(capped),
+        )},
     ))
 
     for ri, r in enumerate(capped, start=2):
@@ -474,6 +541,14 @@ def _parse_docx(path: Path, doc_id: str) -> list[ParsedElement]:
             doc_id, src, n, "table_summary",
             f"Tabelle {ti} aus {src}:\n" + _markdown_table(headers, body),
             locator=f"Tabelle {ti}", table_id=tid,
+            meta={"table": _table_payload(
+                headers,
+                [
+                    (ri, f"Tabelle {ti}, Zeile {ri}", cells)
+                    for ri, cells in enumerate(body, start=1)
+                ],
+                n_indexed=len(body),
+            )},
         ))
         for ri, cells in enumerate(body, start=1):
             line = _row_text(headers, cells)
