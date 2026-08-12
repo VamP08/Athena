@@ -179,6 +179,25 @@ def list_documents(doc_type: str = "", year: str = "") -> str:
         f"({stats['chunks']} indexed passages).",
         "",
     ]
+
+    # Told to the MODEL, not only to the operator, and this is the highest-value
+    # place to say it. The measured failure past the tested size is that the top
+    # result is a document about the right client and the right quarter but the
+    # wrong TYPE, and the model then quotes its figure without hesitating —
+    # published work finds a highly-ranked distractor does more damage than a
+    # random one precisely because rank reads as evidence. Warning it here is
+    # what turns a confident wrong figure into a checked one.
+    if not stats.get("within_tested_envelope", True):
+        lines.append(
+            f"WARNING: this archive is LARGER than the {stats['tested_doc_limit']} "
+            f"documents Athena has been measured on. Above that size, search "
+            f"sometimes ranks first a document about the right client and period "
+            f"but of the WRONG TYPE (a statement instead of a budget). Before you "
+            f"quote any figure, check that the passage's file name matches the "
+            f"document type the question asked about, and say which file each "
+            f"figure came from."
+        )
+        lines.append("")
     for d in docs:
         flag = "" if d["parse_status"] == "ok" else f"  [!{d['parse_status']}]"
         lines.append(

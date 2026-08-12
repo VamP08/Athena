@@ -112,6 +112,19 @@ def render_sidebar(st) -> None:
             f"**Archive** · {stats['documents']} documents · "
             f"{stats['chunks']} passages{countable} · `{stats['embed_model']}`"
         )
+        # Stating the operating regime is part of the product, not a disclaimer.
+        # Quality past the tested size degrades gradually and silently, so
+        # without this the interface looks identical whether the answers can be
+        # trusted or not.
+        if not stats.get("within_tested_envelope", True):
+            st.warning(
+                f"This archive holds {stats['documents']} documents, above the "
+                f"{stats['tested_doc_limit']} Athena has been measured on. Answers "
+                f"stay grounded, but a question phrased loosely can be answered "
+                f"from a neighbouring document of the wrong type. Check the cited "
+                f"file name, or narrow the question by document type and period.",
+                icon=None,
+            )
         if stats.get("years"):
             st.caption("Years: " + ", ".join(y for y in stats["years"] if y))
     else:

@@ -1,0 +1,98 @@
+{
+  "targets": [
+    "budget_bakeer_2023_Q2.csv",
+    "budget_bakefeld_2024_Q2.csv",
+    "budget_deich_2024_Q1.csv",
+    "budget_elbe_2022_Q1.csv",
+    "budget_flutau_2023_Q1.csv",
+    "budget_fluter_2024_Q1.csv",
+    "budget_koog_2024_Q4.csv",
+    "budget_koogau_2024_Q1.csv",
+    "budget_marschfeld_2022_Q4.csv",
+    "budget_marschweg_2022_Q3.csv",
+    "invoice_kranichtal_2021_Q3.csv",
+    "ledger_rheinfeld_2024_Q3.csv"
+  ],
+  "n_questions": 51,
+  "k": 6,
+  "seed": 20260812,
+  "results": [
+    {
+      "documents": 20,
+      "chunks": 312,
+      "distractors": 8,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0
+      }
+    },
+    {
+      "documents": 50,
+      "chunks": 769,
+      "distractors": 38,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0
+      }
+    },
+    {
+      "documents": 100,
+      "chunks": 1534,
+      "distractors": 88,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0
+      }
+    },
+    {
+      "documents": 200,
+      "chunks": 3064,
+      "distractors": 188,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0
+      }
+    },
+    {
+      "documents": 400,
+      "chunks": 6197,
+      "distractors": 388,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 0.9607843137254902,
+        "recall_at_k": 1.0,
+        "mrr": 0.9803921568627451
+      }
+    },
+    {
+      "documents": 800,
+      "chunks": 12390,
+      "distractors": 788,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 0.9019607843137255,
+        "recall_at_k": 1.0,
+        "mrr": 0.9509803921568627
+      }
+    },
+    {
+      "documents": 1200,
+      "chunks": 18591,
+      "distractors": 1188,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 0.9215686274509803,
+        "recall_at_k": 0.9803921568627451,
+        "mrr": 0.9509803921568627
+      }
+    }
+  ]
+}

@@ -46,6 +46,20 @@ DEFAULT_INDEX_PATH = os.getenv("ATHENA_INDEX_PATH", "athena_index.db")
 DEFAULT_CORPUS_DIR = os.getenv("ATHENA_CORPUS_DIR", "corpus")
 DEFAULT_EMBED_MODEL = os.getenv("ATHENA_EMBED_MODEL", "bge-m3")
 
+# The archive size this system has been MEASURED at, not a hard cap.
+#
+# Retrieval degrades gradually rather than breaking, so nothing announces itself
+# when a corpus outgrows what was tested — the published failure mode is that
+# top-k quietly fills with documents that are topically right and factually
+# wrong, and the reader model treats their rank as evidence. A system that
+# cannot say which regime it is operating in is asking to be trusted outside
+# the range anyone checked.
+#
+# The number comes from eval/run_scale_envelope.py, which holds the question set
+# constant and varies only the number of distractor documents. Raise it by
+# re-running that, not by editing this line.
+TESTED_DOC_LIMIT = int(os.getenv("ATHENA_TESTED_DOC_LIMIT", "200"))
+
 # One connection is shared process-wide, and api/main.py runs graph work on a
 # ThreadPoolExecutor. sqlite3 objects are not safe to use concurrently from
 # several threads even with check_same_thread=False, so every statement goes
@@ -811,6 +825,8 @@ def index_stats(index_path: str | None = None) -> dict:
         "embedded_chunks": embedded,
         "fact_tables": counts["tables"],
         "fact_rows": counts["rows"],
+        "tested_doc_limit": TESTED_DOC_LIMIT,
+        "within_tested_envelope": docs <= TESTED_DOC_LIMIT,
         "doc_types": types,
         "years": years,
         "embed_model": model,

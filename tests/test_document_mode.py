@@ -318,3 +318,47 @@ def test_document_mode_selects_document_tools(monkeypatch):
 
     monkeypatch.setenv("ATHENA_MODE", "web")
     assert "web_search" in {t.name for t in _get_search_tools()}
+
+
+# ── tested operating envelope ────────────────────────────────────────────────
+
+def test_index_stats_reports_the_tested_envelope(built, monkeypatch):
+    """
+    The system must be able to say which regime it is operating in.
+
+    Retrieval past the measured corpus size degrades gradually, so nothing in
+    the output looks different when the archive has outgrown what was tested —
+    that is precisely why it has to be stated rather than inferred.
+    """
+    _, db = built
+    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 200)
+    stats = idx.index_stats(db)
+    assert stats["tested_doc_limit"] == 200
+    assert stats["within_tested_envelope"] is True
+
+    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 1)
+    assert idx.index_stats(db)["within_tested_envelope"] is False
+
+
+def test_list_documents_warns_the_model_only_when_over_the_limit(built, monkeypatch):
+    """
+    The warning goes to the MODEL, because the model is what quotes the figure.
+
+    A highly-ranked distractor does more damage than a random one — rank reads
+    as evidence — so telling the reader that the archive is outside the measured
+    range is what turns a confident wrong figure into a checked one. It must
+    stay silent inside the envelope, or it is just noise on every call.
+    """
+    from core import doc_tools
+
+    _, db = built
+    monkeypatch.setenv("ATHENA_INDEX_PATH", db)
+    monkeypatch.setattr(idx, "DEFAULT_INDEX_PATH", db)
+
+    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 200)
+    assert "WARNING" not in doc_tools.list_documents.invoke({})
+
+    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 1)
+    over = doc_tools.list_documents.invoke({})
+    assert "WARNING" in over
+    assert "WRONG TYPE" in over

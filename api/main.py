@@ -313,10 +313,26 @@ def health():
     from core.llm import resolve_backend
 
     backend, model = resolve_backend()
-    return {
+    out = {
         "status": "ok",
         "checkpointer": os.getenv("ATHENA_CHECKPOINTER", "memory"),
         "model_backend": backend,
         "model": model,
         "auth": "enabled" if os.getenv("ATHENA_API_TOKEN") else "disabled",
     }
+
+    # A caller integrating against this API cannot see the Streamlit warning, so
+    # the operating regime is reported here too. /health failing when there is
+    # simply no archive yet would be wrong — document mode is optional.
+    try:
+        from core import index as idx
+
+        stats = idx.index_stats()
+        out["archive"] = {
+            "documents": stats["documents"],
+            "tested_doc_limit": stats["tested_doc_limit"],
+            "within_tested_envelope": stats["within_tested_envelope"],
+        }
+    except Exception:  # noqa: BLE001 - no index is a valid state, not an outage
+        pass
+    return out
