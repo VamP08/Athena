@@ -423,13 +423,16 @@ def test_running_balance_detected_without_a_header_hint():
     assert "stand" in fx.detect_running_balance(columns, rows)
 
 
-def test_a_property_sheet_is_not_counted_as_records(tmp_path, monkeypatch):
+def test_a_property_sheet_pivots_to_one_record(tmp_path, monkeypatch):
     """
     `Feld;Wert` files hold ONE record written down the page.
 
-    Counting their rows counts fields. Across 266 such invoices that reports
-    3,598 — arithmetically perfect, thirteen times the truth, and indistinguishable
-    from a real answer unless the shape is recognised and called out.
+    Counting their rows counts fields — across 266 such invoices that reports
+    3,598, arithmetically perfect and thirteen times the truth. Pivoted, each
+    sheet is one fact whose columns are its keys, so counting invoices counts
+    invoices and their Nettobetrag becomes summable across the archive, which
+    row-wise storage could never offer at all (the amounts share a value column
+    with dates, names and currency codes).
     """
     monkeypatch.setattr(idx, "get_embeddings", lambda *a, **k: _NoEmbeddings())
     folder = tmp_path / "kv"
@@ -451,11 +454,96 @@ def test_a_property_sheet_is_not_counted_as_records(tmp_path, monkeypatch):
     idx.build_index(corpus_dir=str(folder), index_path=path)
     try:
         r = agg(path, operation="count", doc_type="invoice")
-        assert r["documents"] == 3
-        assert any("NOT RECORDS" in w for w in r["warnings"]), r["warnings"]
-        assert any("the answer is 3" in w for w in r["warnings"]), r["warnings"]
+        assert r["value"] == 3, "one record per sheet, not one per field"
+        assert not any("NOT RECORDS" in w for w in r["warnings"]), r["warnings"]
+
+        s = agg(path, operation="sum", column="Nettobetrag", doc_type="invoice")
+        assert s["value"] == pytest.approx(600000.0)
+        assert s["matched_rows"] == 3
     finally:
         idx.close()
+
+
+def test_a_stacked_csv_splits_into_its_real_tables(tmp_path, monkeypatch):
+    """
+    One CSV, two tables: a property block, a blank line, a line-item register.
+
+    Parsed as one table, the line items are read against the property block's
+    Feld/Wert headers — the register's own columns are unrecoverable and every
+    aggregate over the file is wrong. Split, the property block pivots to one
+    record and the register keeps its own summable columns.
+    """
+    monkeypatch.setattr(idx, "get_embeddings", lambda *a, **k: _NoEmbeddings())
+    folder = tmp_path / "stacked"
+    folder.mkdir()
+    (folder / "invoice_kranich_2024_Q1.csv").write_text(
+        "Feld;Wert\n"
+        "Dokumenttyp;invoice\n"
+        "Kunde;Kranich AG\n"
+        "Belegnummer;2024-Q1-0042\n"
+        "Nettobetrag (EUR);300,00\n"
+        "\n"
+        "Position;Beschreibung;Betrag (EUR)\n"
+        "1;Lagerflaeche;100,00\n"
+        "2;Transport;200,00\n",
+        encoding="utf-8",
+    )
+
+    idx.close()
+    path = str(tmp_path / "stacked.db")
+    idx.build_index(corpus_dir=str(folder), index_path=path)
+    try:
+        conn = idx.connect(path)
+        layouts = sorted(
+            r["layout"] for r in conn.execute("SELECT layout FROM fact_tables")
+        )
+        assert layouts == ["keyvalue_record", "records"], layouts
+
+        head = agg(path, operation="sum", column="Nettobetrag")
+        assert head["value"] == pytest.approx(300.0)
+
+        items = agg(path, operation="sum", column="Betrag")
+        assert items["value"] == pytest.approx(300.0)
+        assert items["matched_rows"] == 2
+
+        # Line-item locators must cite the file's REAL line numbers — the
+        # register's first data row is line 8 of the file, not "Zeile 2".
+        rows = conn.execute(
+            "SELECT locator FROM facts WHERE row_kind='data' ORDER BY row"
+        ).fetchall()
+        assert any(r["locator"] == "Zeile 8" for r in rows), [r["locator"] for r in rows]
+    finally:
+        idx.close()
+
+
+def test_legacy_unpivoted_keyvalue_still_warns(corpus):
+    """
+    An index whose facts predate the pivot must keep the rows-are-fields warning.
+
+    The pivot only lands when facts are (re-)extracted; a pre-existing database
+    still holds field-per-row tables marked layout='keyvalue', and silently
+    treating those as record counts is the exact failure the warning existed for.
+    """
+    _, path = corpus
+    conn = idx.connect(path)
+    fx.store_table(conn, {
+        "table_uid": "legacy:kv", "doc_id": "legacydoc", "source": "legacy_invoice.csv",
+        "table_id": "legacy:kv", "sheet": None, "page": None,
+        "doc_type": "payroll", "year": "2024",
+        "n_rows": 6, "n_rows_indexed": 6, "n_rows_total": 6, "n_rows_seen": 6,
+        "n_total_rows": 0, "layout": "keyvalue",
+        "columns": [
+            {"name": "feld", "raw": "Feld", "role": "label", "kind": "text"},
+            {"name": "wert", "raw": "Wert", "role": "label", "kind": "text"},
+        ],
+        "facts": [{"row": i, "locator": f"Zeile {i}", "row_kind": "data", "label": "x"}
+                  for i in range(2, 8)],
+        "values": [],
+    })
+    conn.commit()
+
+    r = agg(path, operation="count", doc_type="payroll")
+    assert any("NOT RECORDS" in w for w in r["warnings"]), r["warnings"]
 
 
 def test_a_two_column_register_is_not_mistaken_for_a_property_sheet(corpus):

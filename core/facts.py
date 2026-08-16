@@ -460,13 +460,86 @@ def column_signature(columns: list[dict]) -> str:
 
 # ── extraction ───────────────────────────────────────────────────────────────
 
+def _pivot_keyvalue(payload: dict, rows: list[dict], grids: list[list[str]],
+                    *, doc_id, source, doc_type, year, table_id) -> dict:
+    """
+    A `Feld;Wert` property sheet, pivoted into ONE record.
+
+    The sheet's rows are the FIELDS of a single record written down the page, so
+    stored row-wise it makes every aggregate wrong: 266 such invoices count as
+    3,598 "rows", and their `Nettobetrag` cannot be summed at all because the
+    amounts sit in a value column mixed with dates, names and currency codes.
+    Pivoted, each sheet is one fact whose columns are its keys — so counting
+    invoices counts invoices, and summing Nettobetrag across the archive answers
+    the question that was actually asked.
+
+    Column roles come from the key text plus its single value, through the same
+    classifier as ordinary headers: `Belegnummer` is an identifier, `Nettobetrag
+    (EUR)` an amount, `Geschaeftsjahr` a period. No total-row classification —
+    one record has no subtotals — and no running-balance detection, which needs
+    a series.
+    """
+    pairs = [
+        (str(g[0]).strip(), str(g[1]).strip() if len(g) > 1 else "")
+        for g in grids if g and str(g[0]).strip()
+    ]
+
+    columns, values, seen = [], [], set()
+    for key, val in pairs:
+        col = classify_column(key, [val])
+        name = col["name"]
+        if name in seen:
+            k = 2
+            while f"{name}{k}" in seen:
+                k += 1
+            name = col["name"] = f"{name}{k}"
+        seen.add(name)
+        columns.append(col)
+        if val:
+            values.append((0, name, val, parse_number(val), parse_date(val)))
+
+    label = next(
+        (v for (k, v), c in zip(pairs, columns)
+         if c["role"] in ("identifier", "label") and v),
+        source,
+    )
+    first = rows[0].get("locator") or ""
+    last = rows[-1].get("locator") or ""
+    locator = f"{first}–{last}" if first and last and first != last else first
+
+    return {
+        "table_uid": str(table_id or f"{doc_id[:16]}:t"),
+        "doc_id": doc_id,
+        "source": source,
+        "table_id": table_id,
+        "sheet": payload.get("sheet"),
+        "page": payload.get("page"),
+        "doc_type": doc_type,
+        "year": year,
+        "n_rows": 1,
+        "n_rows_indexed": 1 if payload.get("n_rows_indexed") else 0,
+        "n_rows_total": 1,
+        "n_rows_seen": 1,
+        "n_total_rows": 0,
+        # 'keyvalue_record' (pivoted, rows are records) is distinct from the
+        # legacy 'keyvalue' (unpivoted, rows are fields) so that an index built
+        # before this change still triggers the rows-are-fields warning until
+        # its facts are re-extracted.
+        "layout": "keyvalue_record",
+        "columns": columns,
+        "facts": [{"row": rows[0].get("row"), "locator": locator,
+                   "row_kind": "data", "label": str(label)[:200]}],
+        "values": values,
+    }
+
+
 def extract_table(payload: dict, *, doc_id, source, doc_type, year, table_id) -> dict | None:
     """
     One parsed table's full-row payload into records ready for storage.
 
-    Returns None when the table carries nothing worth aggregating — no headers,
-    or a single column, which is what a key/value "Feld;Wert" sheet looks like
-    and which has no rows to count.
+    Returns None when the table carries nothing worth aggregating — no headers
+    or no rows. A two-column key/value sheet is NOT rejected: it is detected and
+    pivoted into a single record (see _pivot_keyvalue).
     """
     headers = [str(h or "").strip() for h in payload.get("headers") or []]
     rows = payload.get("rows") or []
@@ -488,6 +561,12 @@ def extract_table(payload: dict, *, doc_id, source, doc_type, year, table_id) ->
             name = col["name"] = f"{name}{k}"
         seen.add(name)
         columns.append(col)
+
+    if detect_layout(columns, grids) == "keyvalue":
+        return _pivot_keyvalue(
+            payload, rows, grids, doc_id=doc_id, source=source,
+            doc_type=doc_type, year=year, table_id=table_id,
+        )
 
     for name in detect_running_balance(columns, grids):
         for c in columns:
@@ -539,7 +618,7 @@ def extract_table(payload: dict, *, doc_id, source, doc_type, year, table_id) ->
         "n_rows_total": payload.get("n_rows_total", len(facts)),
         "n_rows_seen": payload.get("n_rows_tabulated", len(rows)),
         "n_total_rows": n_total,
-        "layout": detect_layout(columns, grids),
+        "layout": "records",  # keyvalue returned early via _pivot_keyvalue
         "columns": columns,
         "facts": facts,
         "values": values,
@@ -626,7 +705,7 @@ def _period_range(period: str) -> tuple[str, str] | None:
     return None
 
 
-def _match_column(requested: str, columns: list[dict]) -> list[dict]:
+def _match_tiers(requested: str, columns: list[dict]) -> tuple[int, list[dict]]:
     """
     Resolve a column name the model typed against a table's real headers.
 
@@ -634,12 +713,19 @@ def _match_column(requested: str, columns: list[dict]) -> list[dict]:
     `Nettobetrag (EUR)`, and for `amount` when it reads `Betrag (EUR)`. Exact
     matching would fail on nearly every real call; matching too loosely would
     silently aggregate the wrong column, which is worse than failing. So the best
-    tier that matches wins, and ties are reported to the caller rather than
-    resolved by guessing.
+    tier that matches wins (0 exact, 1 prefix, 2 contains, 3 shared word), and
+    ties are reported to the caller rather than resolved by guessing.
+
+    The tier number is returned alongside the matches because it must be
+    comparable ACROSS tables: `Betrag` prefix-matches a register's `Betrag
+    (EUR)` and merely contains-matches an invoice header's `Nettobetrag (EUR)` —
+    and the invoice header IS the total of those line items, so letting both
+    tables join one sum double-counts every euro. The caller keeps only the
+    tables that matched at the globally best tier.
     """
     want = norm_col(requested)
     if not want:
-        return []
+        return (99, [])
     tiers: list[list[dict]] = [[], [], [], []]
     for c in columns:
         name = c["name"]
@@ -651,10 +737,15 @@ def _match_column(requested: str, columns: list[dict]) -> list[dict]:
             tiers[2].append(c)
         elif set(re.findall(r"[a-z]{3,}", want)) & set(re.findall(r"[a-z]{3,}", name)):
             tiers[3].append(c)
-    for t in tiers:
+    for i, t in enumerate(tiers):
         if t:
-            return t
-    return []
+            return (i, t)
+    return (99, [])
+
+
+def _match_column(requested: str, columns: list[dict]) -> list[dict]:
+    """One table's best-tier matches. See _match_tiers for the tier semantics."""
+    return _match_tiers(requested, columns)[1]
 
 
 def select_tables(conn, lock, *, source="", doc_type="", year="") -> list[dict]:
@@ -813,18 +904,30 @@ def aggregate(
 
     resolved: list[tuple[dict, dict | None]] = []
     ambiguous: list[dict] = []
+    excluded_looser: list[str] = []
 
-    for t in tables:
-        if not column:
-            resolved.append((t, None))
-            continue
-        cands = _match_column(column, t["columns"])
-        if not cands:
-            continue
-        if len(cands) > 1 and op != "count":
-            ambiguous.append({"source": t["source"], "sheet": t["sheet"],
-                              "columns": [c["raw"] for c in cands]})
-        resolved.append((t, cands[0]))
+    if column:
+        scored = []
+        for t in tables:
+            tier, cands = _match_tiers(column, t["columns"])
+            if cands:
+                scored.append((tier, t, cands))
+        # Only the globally best tier participates. A table that merely
+        # contains-matches must not join tables that matched exactly — the
+        # loose match is usually a DIFFERENT quantity that happens to share a
+        # word, and in an invoice it is the total of the very rows the precise
+        # match is summing.
+        best = min((s[0] for s in scored), default=99)
+        for tier, t, cands in scored:
+            if tier != best:
+                excluded_looser.append(f"{cands[0]['raw']} ({t['source']})")
+                continue
+            if len(cands) > 1 and op != "count":
+                ambiguous.append({"source": t["source"], "sheet": t["sheet"],
+                                  "columns": [c["raw"] for c in cands]})
+            resolved.append((t, cands[0]))
+    else:
+        resolved = [(t, None) for t in tables]
 
     if not resolved:
         return {
@@ -872,6 +975,12 @@ def aggregate(
         )
 
     per_table, warnings, notes = [], [], []
+    if excluded_looser:
+        warnings.append(
+            f"also matched '{column}' but only loosely, so NOT included: "
+            + ", ".join(excluded_looser[:8])
+            + ". Name that column precisely if you meant it."
+        )
     groups: dict[str, dict] = {}
     total_rows = matched_rows = excluded = 0
     values: list[float] = []
@@ -971,11 +1080,14 @@ def aggregate(
     # still allowed — across 300 quarterly invoice registers it is exactly what
     # was asked for — but never without saying that it happened.
     if op in ("sum", "average") and len(per_table) > 1:
+        srcs = sorted({p["source"] for p in per_table})
+        shown = ", ".join(srcs[:6]) + (
+            f", … and {len(srcs) - 6} more" if len(srcs) > 6 else ""
+        )
         warnings.append(
-            f"this figure COMBINES {len(per_table)} separate tables "
-            f"({', '.join(sorted({p['source'] for p in per_table}))}); the per-table "
-            f"figures are listed below — check they measure the same thing before "
-            f"quoting the combined one."
+            f"this figure COMBINES {len(per_table)} separate tables ({shown}); "
+            f"the per-table figures are listed below — check they measure the "
+            f"same thing before quoting the combined one."
         )
     thin = [p for p in per_table if p["rows_indexed"] < p["rows_total"] + p["totals_excluded"]]
     if thin:

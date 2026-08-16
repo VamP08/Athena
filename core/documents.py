@@ -452,6 +452,21 @@ def _read_text_guess_encoding(path: Path) -> str:
 
 
 def _parse_csv(path: Path, doc_id: str) -> list[ParsedElement]:
+    """
+    A CSV file is not necessarily one table.
+
+    Real exports stack several blocks in one file — a `Feld;Wert` property block,
+    a blank line, then a line-item register with its own header. Parsed as one
+    table, the second block's rows are read against the first block's headers,
+    which mangles retrieval text AND poisons aggregation: the line items inherit
+    the property block's two-column shape, and nothing downstream can recover
+    the real columns. Blocks are therefore split on fully-empty rows, each with
+    its own header, table id and payload.
+
+    Locators carry the file's REAL line numbers (header line included), not a
+    per-block counter — "Zeile 12" in a citation must mean line 12 of the file
+    the user opens, whichever block it belongs to.
+    """
     src = path.name
     text = _read_text_guess_encoding(path)
 
@@ -465,48 +480,71 @@ def _parse_csv(path: Path, doc_id: str) -> list[ParsedElement]:
     if not rows:
         return []
 
-    headers = [_norm_cell(c) for c in rows[0]]
-    body = rows[1:]
-    capped = body[:MAX_ROWS_EMBEDDED]
-    tid = f"{doc_id[:16]}:csv"
+    blocks: list[list[tuple[int, list[str]]]] = []
+    cur: list[tuple[int, list[str]]] = []
+    for ln, r in enumerate(rows, start=1):
+        if not any(str(c).strip() for c in r):
+            if cur:
+                blocks.append(cur)
+                cur = []
+            continue
+        cur.append((ln, r))
+    if cur:
+        blocks.append(cur)
+    if not blocks:
+        return []
 
     els: list[ParsedElement] = []
     n = 0
 
-    if len(body) > MAX_ROWS_EMBEDDED:
+    for bi, block in enumerate(blocks, start=1):
+        headers = [_norm_cell(c) for c in block[0][1]]
+        body = block[1:]
+        capped = body[:MAX_ROWS_EMBEDDED]
+        # Single-block files keep the historical ":csv" id so their element ids
+        # and citations survive this change; only genuinely stacked files gain
+        # numbered ids.
+        tid = (
+            f"{doc_id[:16]}:csv" if len(blocks) == 1 else f"{doc_id[:16]}:csv{bi}"
+        )
+
+        if len(body) > MAX_ROWS_EMBEDDED:
+            n += 1
+            els.append(_mk(
+                doc_id, src, n, "notice",
+                f"[{src}] Nur die ersten {MAX_ROWS_EMBEDDED} von {len(body)} Zeilen "
+                f"indexiert. / Only the first {MAX_ROWS_EMBEDDED} of {len(body)} "
+                f"rows were indexed.",
+                meta={"reason": "row_cap", "total_rows": len(body)},
+            ))
+
         n += 1
         els.append(_mk(
-            doc_id, src, n, "notice",
-            f"[{src}] Nur die ersten {MAX_ROWS_EMBEDDED} von {len(body)} Zeilen indexiert. "
-            f"/ Only the first {MAX_ROWS_EMBEDDED} of {len(body)} rows were indexed.",
-            meta={"reason": "row_cap", "total_rows": len(body)},
+            doc_id, src, n, "table_summary",
+            f"{src}"
+            + (f", Block {bi}" if len(blocks) > 1 else "")
+            + f" ({len(body)} Datenzeilen):\n"
+            + _markdown_table(headers, [[_norm_cell(c) for c in r] for _, r in capped]),
+            table_id=tid,
+            meta={"table": _table_payload(
+                headers,
+                [
+                    (ln, f"Zeile {ln}", [_norm_cell(c) for c in r])
+                    for ln, r in body
+                ],
+                n_indexed=len(capped),
+            )},
         ))
 
-    n += 1
-    els.append(_mk(
-        doc_id, src, n, "table_summary",
-        f"{src} ({len(body)} Datenzeilen):\n"
-        + _markdown_table(headers, [[_norm_cell(c) for c in r] for r in capped]),
-        table_id=tid,
-        meta={"table": _table_payload(
-            headers,
-            [
-                (ri, f"Zeile {ri}", [_norm_cell(c) for c in r])
-                for ri, r in enumerate(body, start=2)
-            ],
-            n_indexed=len(capped),
-        )},
-    ))
-
-    for ri, r in enumerate(capped, start=2):
-        line = _row_text(headers, [_norm_cell(c) for c in r])
-        if not line:
-            continue
-        n += 1
-        els.append(_mk(
-            doc_id, src, n, "table_row", line,
-            locator=f"Zeile {ri}", row=ri, table_id=tid,
-        ))
+        for ln, r in capped:
+            line = _row_text(headers, [_norm_cell(c) for c in r])
+            if not line:
+                continue
+            n += 1
+            els.append(_mk(
+                doc_id, src, n, "table_row", line,
+                locator=f"Zeile {ln}", row=ln, table_id=tid,
+            ))
     return els
 
 
