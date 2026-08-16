@@ -14,9 +14,8 @@ _get_search_tools -> get_document_tools -> a closure over one SessionStore.
 
 from __future__ import annotations
 
-from core import doc_tools
+from core import doc_tools, sessions
 from core import index as idx
-from core import sessions
 
 
 class _StubEmbeddings:

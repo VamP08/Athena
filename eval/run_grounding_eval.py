@@ -378,7 +378,6 @@ def main() -> int:
         os.environ["ATHENA_OLLAMA_REASONING"] = "true" if args.reasoning == "on" else "false"
 
     from core.llm import resolve_backend
-
     from eval.grounding_dataset import GROUNDING_CASES
 
     cases = [c for c in GROUNDING_CASES if not args.only or c["id"] == args.only]

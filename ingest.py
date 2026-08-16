@@ -22,7 +22,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from core.index import DEFAULT_CORPUS_DIR, DEFAULT_EMBED_MODEL, build_index, index_stats  # noqa: E402
+from core.index import (  # noqa: E402
+    DEFAULT_CORPUS_DIR,
+    DEFAULT_EMBED_MODEL,
+    build_index,
+    index_stats,
+)
 
 
 def _print_stats(index_path: str | None = None) -> None:

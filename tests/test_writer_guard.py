@@ -14,7 +14,6 @@ Silence is the failure mode being tested here, not wording.
 
 from __future__ import annotations
 
-import pytest
 from langchain_core.messages import AIMessage
 
 from core import nodes

@@ -11,7 +11,7 @@ compliance feature rather than a UI affordance.
 
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -37,7 +37,7 @@ VALID_STATUSES = {"running", "awaiting_review", "completed", "failed"}
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class Registry:

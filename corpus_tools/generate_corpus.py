@@ -191,10 +191,10 @@ def make_scanned_pdf():
     financial archive, mistaking "unreadable" for "absent" is the difference
     between a caveat and a wrong answer.
     """
+    from PIL import Image, ImageDraw
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
-    from PIL import Image, ImageDraw
 
     img = Image.new("RGB", (1240, 1754), "white")
     d = ImageDraw.Draw(img)
@@ -341,7 +341,7 @@ def make_bank_statement_csv():
         w = csv.writer(fh, delimiter=";")
         w.writerow(["Datum", "Verwendungszweck", "Betrag (EUR)", "Saldo (EUR)"])
         saldo = 1_240_000.0
-        for i in range(80):
+        for _ in range(80):
             amt = round(rnd.uniform(-90_000, 120_000), 2)
             saldo += amt
             w.writerow([

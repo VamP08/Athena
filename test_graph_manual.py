@@ -21,9 +21,11 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from langgraph.types import Command
+
 from core.graph import build_graph, make_initial_state
 
 

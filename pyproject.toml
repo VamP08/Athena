@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "athena-analyst"
+version = "0.9.0"
+description = "Local-first research analyst: multi-agent research over the web or a private financial archive, with human review and measured accuracy"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dynamic = ["dependencies"]
+
+[tool.setuptools]
+packages = ["core", "api", "eval", "mcp_servers", "corpus_tools"]
+py-modules = ["app", "ingest"]
+
+[tool.setuptools.dynamic]
+# requirements.txt stays the single source of truth for dependencies —
+# maintaining a second list here would guarantee they drift apart.
+dependencies = { file = "requirements.txt" }
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.13"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv", "corpus", "corpus_scale", "docs"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # import ordering
+    "B",   # bugbear — real bug patterns, not style
+    "UP",  # pyupgrade — keeps 3.12+ idioms consistent
+]
+ignore = [
+    # Line length is enforced loosely on purpose: German bilingual user-facing
+    # strings and SQL do not wrap well, and breaking them harms greppability.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Eval scripts are runnable files: they set sys.path and load .env BEFORE the
+# project imports, which is the documented pattern there, not an accident.
+"eval/*.py" = ["E402"]
+"tests/*.py" = ["E402"]
+"test_graph_manual.py" = ["E402"]
+# api/main.py loads .env before project imports (E402, same pattern as eval),
+# and B008 flags `Depends(...)`/`File(...)` in defaults — which IS FastAPI's
+# dependency-injection idiom, not the mutable-default bug the rule hunts.
+"api/main.py" = ["E402", "B008"]
+
+[tool.mypy]
+python_version = "3.12"
+# Deliberately permissive: the LangChain/LangGraph ecosystem ships partial or
+# missing stubs, and a strict run would drown real findings in third-party
+# noise. This configuration catches genuine type errors in our own signatures
+# without demanding annotations everywhere.
+ignore_missing_imports = true
+check_untyped_defs = true
+files = ["core", "api"]

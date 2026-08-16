@@ -14,12 +14,10 @@ Test coverage:
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage
 from langgraph.types import Command
 
 from core.graph import build_graph, make_initial_state
-
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -122,7 +120,7 @@ def test_feedback_triggers_revision_loop(mock_get_llm, mock_tools):
     config = {"configurable": {"thread_id": "integ-003"}}
 
     # First run → interrupt at review
-    result = graph.invoke(make_initial_state("test topic"), config=config)
+    graph.invoke(make_initial_state("test topic"), config=config)
     first = graph.get_state(config)
     assert first.next == ("review",)
 
@@ -167,7 +165,7 @@ def test_revised_draft_differs_from_original(mock_get_llm, mock_tools):
     graph = build_graph()
     config = {"configurable": {"thread_id": "integ-004"}}
 
-    result = graph.invoke(make_initial_state("test topic"), config=config)
+    graph.invoke(make_initial_state("test topic"), config=config)
     original = graph.get_state(config).values["draft_report"]
 
     graph.invoke(Command(resume="Please revise."), config=config)

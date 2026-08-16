@@ -9,8 +9,6 @@ the LLM, so most tests here require no mocking at all.
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from core.nodes import supervisor_node
 
 
@@ -70,8 +68,9 @@ def test_returns_ai_message_in_messages():
 @patch("core.nodes.get_llm")
 def test_llm_routing_called_for_edge_case(mock_get_llm):
     """When draft exists and iters < 3, the LLM is consulted."""
-    from pydantic import BaseModel
     from typing import Literal
+
+    from pydantic import BaseModel
 
     class FakeRoute(BaseModel):
         next: Literal["researcher", "writer", "end"] = "writer"

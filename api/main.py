@@ -273,7 +273,10 @@ async def attach_document(session_id: str, file: UploadFile = File(...)):
         )
 
     store = sessions.get_or_create(session_id)
-    result = store.add_document(file.filename, data)
+    # A multipart part can arrive with no filename at all; the parsers dispatch
+    # on the suffix, so a None here would crash the attach instead of degrading
+    # to the unsupported-format notice that "no idea what this is" deserves.
+    result = store.add_document(file.filename or "unnamed_upload", data)
     if not result.get("ok"):
         raise HTTPException(status_code=409, detail=result.get("error", "Attach failed"))
     return result

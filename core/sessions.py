@@ -205,7 +205,7 @@ class SessionStore:
                 (doc_id, filename, "", doc_type, year, len(to_store),
                  "partial" if notices else "ok", None, time.time()),
             )
-            for e, vec in zip(to_store, store_vectors):
+            for e, vec in zip(to_store, store_vectors, strict=True):
                 self._conn.execute(
                     "INSERT INTO chunks"
                     "(doc_id,element_id,source,kind,text,locator,page,sheet,row,table_id,"

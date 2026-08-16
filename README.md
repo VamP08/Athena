@@ -65,7 +65,8 @@ cd Athena
 
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.lock # exact known-good pins; requirements.txt has the ranges
+pip install -e .                 # or: pip install -r requirements.txt
 
 cp .env.example .env             # defaults run fully local — no keys needed
 
@@ -244,6 +245,15 @@ Switch by setting `GROQ_API_KEY` in `.env`. No code changes. This mirrors the
 hybrid architecture German enterprises actually deploy: sensitive workloads
 local, scale-out in the cloud.
 
+**Measured latency, consumer laptop (RTX-class 8 GB GPU), zero cost on both paths:**
+a full research → cited-report cycle on the local 9B with its reasoning trace on
+runs **~3.5 min**; document-mode Q&A averages **~4.5 min per question** end to end.
+Disabling the reasoning trace is ~4× faster and was rejected on measurement — it
+produced five fabricated figures where the slower setting produced none (see the
+evaluation section). On Groq, generation itself returns in seconds; throughput is
+governed by the free tier's budgets (8K tokens/min per request, 200K/day), which
+is why evaluation runs pace their judge calls rather than stream at full speed.
+
 ---
 
 ## MCP Server
@@ -267,12 +277,17 @@ Any MCP-compatible client can connect to `http://localhost:8001/mcp` and discove
 ## Evaluation (Ragas)
 
 ```bash
-python eval/run_eval.py
+python eval/run_eval.py                    # web mode
+python eval/run_eval.py --mode documents   # document mode
 ```
 
 Runs every golden-dataset topic through the full graph (auto-approving the HITL
 gate), then scores with LLM-as-judge. Judge and embeddings can run fully locally
-(Ollama) — the evaluation itself honours the local-first constraint.
+(Ollama) — the evaluation itself honours the local-first constraint. The two
+modes are separate rows on purpose: different tools, different context shapes,
+different embedding models — one combined number would manufacture a trend.
+
+**Web mode** (5 topics · judge `llama-3.3-70b-versatile` on Groq · 2026-07-22):
 
 | Metric | Score | Target | |
 |---|---|---|---|
@@ -280,14 +295,33 @@ gate), then scores with LLM-as-judge. Judge and embeddings can run fully locally
 | faithfulness | **0.83** | > 0.80 | ✅ |
 | context_precision | **1.00*** | > 0.75 | ✅ |
 
-<sup>5-topic golden dataset · judge: `llama-3.3-70b-versatile` (Groq) · embeddings:
-local `nomic-embed-text` · 2026-07-22. Judge migration to `gpt-oss-120b` is
-scheduled — its free tier's tighter token budgets need the leaner judging
-prompts that the citations feature will bring.
-*context_precision currently scores a single synthesized context chunk, so it
-reads near-binary — the planned citations feature (raw per-source contexts) will
-turn it into a discriminating signal. Weakest cell: faithfulness 0.64 on the
-fast-moving topic (SpaceX Starship) — the current tuning target.</sup>
+<sup>*context_precision scores a single synthesized context chunk in web mode, so
+it reads near-binary. Weakest cell: faithfulness 0.64 on the fast-moving topic
+(SpaceX Starship).</sup>
+
+**Document mode** (6 archive questions · judge `gpt-oss-120b` on Groq · 2026-08-16):
+
+| Metric | Score | Target | |
+|---|---|---|---|
+| answer_relevancy | 0.67 | > 0.85 | ❌ |
+| faithfulness | 0.66 | > 0.80 | ❌ |
+| context_precision | **0.94** | > 0.75 | ✅ |
+
+Two of those cells miss their targets, and the numbers are published anyway,
+with the decomposition — because the same six questions score **6/6 correct,
+0 fabricated figures, 0 misattributed** on the deterministic grounding harness,
+which checks the figures exactly rather than by judge. Reading the low-scoring
+reports against their retrieved passages shows what the judge is penalising:
+*derived* arithmetic (a year-on-year percentage computed from two grounded
+figures), analyst framing ("essential for investors"), and the report format
+itself — a 400–600 word structured report answering a single-fact question
+contains many sentences that are commentary rather than entailed claims.
+context_precision 0.94 is the cell that became meaningful in document mode,
+where contexts are real verbatim passages instead of one synthesis blob: what
+is retrieved is almost entirely what the report needs. The honest conclusion —
+the figures are right and grounded; the fixed report shape is the wrong
+response SIZE for point questions, and adaptive response length is logged as
+the next quality item, not a metric to tune away.
 
 ---
 
@@ -296,22 +330,29 @@ fast-moving topic (SpaceX Starship) — the current tuning target.</sup>
 ```
 athena/
 ├── app.py                    # Streamlit UI — chat, streaming, HITL review panel
+├── ingest.py                 # CLI: folder of documents → searchable archive
 ├── api/
 │   ├── main.py               # FastAPI service — jobs, review gate, auth, health
 │   └── registry.py           # Thread registry + approval audit trail (SQLite)
-├── Dockerfile · docker-compose.yml
-├── test_graph_manual.py      # Real end-to-end validation script
 ├── core/
 │   ├── state.py              # ResearchState TypedDict (add-reducer lists)
 │   ├── llm.py                # get_llm() — Groq → Ollama fallback
 │   ├── tools.py              # web_search tool on ddgs (retry/backoff)
 │   ├── nodes.py              # supervisor / researcher / writer / review nodes
-│   └── graph.py              # StateGraph assembly + InMemorySaver
-├── mcp_servers/
-│   ├── web_server.py         # FastMCP server (streamable HTTP)
-│   └── connect.py            # MCP → LangChain tools client helper
-├── tests/                    # mocked unit + integration tests (CI)
-├── eval/                     # Ragas golden dataset + evaluation runner
+│   ├── graph.py              # StateGraph assembly + checkpointing
+│   ├── documents.py          # PDF/XLSX/DOCX/CSV/MD parsing → cited elements
+│   ├── index.py              # sqlite-vec + FTS5 hybrid index, one file
+│   ├── facts.py              # exact aggregation: every row, refusal rules
+│   ├── doc_tools.py          # document_search · list_documents · aggregate_documents
+│   ├── sessions.py           # per-chat uploads, in-memory, scope-isolated
+│   └── ui_documents.py       # archive panel + upload UI
+├── mcp_servers/              # FastMCP server (streamable HTTP) + client helper
+├── corpus_tools/             # seeded synthetic corpus generators
+├── tests/                    # 163 mocked tests — no network, no LLM (CI gate)
+├── eval/                     # grounding · retrieval · scale-envelope · Ragas harnesses
+├── pyproject.toml            # packaging + ruff/mypy config
+├── requirements.lock         # exact known-good pins (CI); .txt holds the ranges
+├── Dockerfile · docker-compose.yml
 └── docs/                     # PROGRESS.md · ROADMAP.md · DECISIONS.md
 ```
 

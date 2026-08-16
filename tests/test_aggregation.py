@@ -20,7 +20,6 @@ from core import documents as docs
 from core import facts as fx
 from core import index as idx
 
-
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
 class _NoEmbeddings:

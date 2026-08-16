@@ -6,7 +6,7 @@ than overwriting — multiple nodes can contribute without knowing about each ot
 """
 
 from operator import add
-from typing import Annotated, List
+from typing import Annotated
 
 from langchain_core.messages import BaseMessage
 from typing_extensions import TypedDict
@@ -17,10 +17,10 @@ class ResearchState(TypedDict):
     topic: str
 
     # Full message history — each node appends; never overwritten
-    messages: Annotated[List[BaseMessage], add]
+    messages: Annotated[list[BaseMessage], add]
 
     # Accumulated research summaries from the researcher agent
-    search_results: Annotated[List[str], add]
+    search_results: Annotated[list[str], add]
 
     # Verbatim evidence behind those summaries, in document mode: one dict per
     # retrieved passage ({source, locator, kind, text, score, ...}).
@@ -31,7 +31,7 @@ class ResearchState(TypedDict):
     # blob as `retrieved_contexts` — which is why context_precision scored a
     # meaningless 1.00. Carrying the real chunks makes citation possible and
     # makes the retrieval metrics measure retrieval.
-    retrieved_chunks: Annotated[List[dict], add]
+    retrieved_chunks: Annotated[list[dict], add]
 
     # The current draft report (overwritten on each revision)
     draft_report: str

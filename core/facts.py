@@ -499,7 +499,7 @@ def _pivot_keyvalue(payload: dict, rows: list[dict], grids: list[list[str]],
             values.append((0, name, val, parse_number(val), parse_date(val)))
 
     label = next(
-        (v for (k, v), c in zip(pairs, columns)
+        (v for (k, v), c in zip(pairs, columns, strict=True)
          if c["role"] in ("identifier", "label") and v),
         source,
     )
@@ -580,7 +580,7 @@ def extract_table(payload: dict, *, doc_id, source, doc_type, year, table_id) ->
     facts, values, n_total = [], [], 0
 
     has_date = any(c["role"] == "date" for c in columns)
-    for r, grid in zip(rows, grids):
+    for r, grid in zip(rows, grids, strict=True):
         if not any(str(c).strip() for c in grid):
             continue
         kind = classify_row_kind(grid, columns, has_date=has_date)
@@ -1283,7 +1283,7 @@ def _finish_breakdown(conn, lock, resolved, groups, column, per_table,
     }
 
 
-def _closing_balance(conn, lock, table, col, flt: "_Filter | None" = None) -> dict:
+def _closing_balance(conn, lock, table, col, flt: _Filter | None = None) -> dict:
     """
     The last value of a balance column, in date order.
 

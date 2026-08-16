@@ -16,12 +16,19 @@ Zero-OpenAI-cost by construction:
                  always pass both explicitly.
 
 Usage:
-    python eval/run_eval.py
+    python eval/run_eval.py                    # web mode (results.csv)
+    python eval/run_eval.py --mode documents   # document mode (results_documents.csv)
+
+The two modes write SEPARATE artifacts and must be reported as separate rows:
+they use different tools, different contexts (web snippets vs verbatim archive
+passages) and, historically, different embedding models — their scores are not
+comparable and presenting them in one row would manufacture a trend.
 
 Output:
-    Scores to stdout (incl. README-ready markdown table) + eval/results.csv.
+    Scores to stdout (incl. README-ready markdown table) + the mode's CSV.
 """
 
+import argparse
 import asyncio
 import csv
 import os
@@ -35,19 +42,24 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import eval._ragas_compat  # noqa: F401  — must precede any ragas import
+# The compat shim patches the ragas 0.4 module surface and MUST be imported
+# before anything from ragas — alphabetical sorting would silently undo that,
+# and an autofix once did exactly this. The directive below must stay EXACT
+# ("# isort: off" with no trailing text), or ruff ignores it and re-sorts.
+# isort: off
+import eval._ragas_compat  # noqa: F401
 
 from langgraph.types import Command
 from openai import AsyncOpenAI
-
-from ragas.llms import llm_factory
 from ragas.embeddings import OpenAIEmbeddings
+from ragas.llms import llm_factory
 from ragas.metrics.collections import AnswerRelevancy, ContextPrecision, Faithfulness
 
-from core.graph import build_graph, make_initial_state
-from eval.test_dataset import TEST_CASES
+from eval.test_dataset import DOCUMENT_CASES, TEST_CASES
+# isort: on
 
 TARGETS = {
     "answer_relevancy": 0.85,
@@ -96,6 +108,8 @@ def run_case(graph, case: dict, case_num: int, total: int) -> dict:
 
     print(f"  [{case_num}/{total}] {topic}")
 
+    from core.graph import make_initial_state
+
     graph.invoke(make_initial_state(topic), config=config)
     mid_state = graph.get_state(config)
     if mid_state.next != ("review",):
@@ -106,8 +120,21 @@ def run_case(graph, case: dict, case_num: int, total: int) -> dict:
     final_state = graph.get_state(config)
 
     draft = final_state.values.get("draft_report", "")
-    contexts = final_state.values.get("search_results", []) or ["No research gathered"]
-    print(f"    Draft: {len(draft.split())} words | Research chunks: {len(contexts)}")
+
+    # Document mode carries the verbatim retrieved passages in state, and THOSE
+    # are the honest contexts: faithfulness asks whether the report's claims are
+    # in what was retrieved, and context_precision whether what was retrieved
+    # was needed. Web mode has only the researcher's synthesis, which is why
+    # its context_precision was near-binary until document mode existed.
+    chunks = final_state.values.get("retrieved_chunks") or []
+    if chunks:
+        contexts = [
+            f"[{c.get('source', '?')} — {c.get('locator', '')}] {c.get('text', '')}"
+            for c in chunks
+        ]
+    else:
+        contexts = final_state.values.get("search_results", []) or ["No research gathered"]
+    print(f"    Draft: {len(draft.split())} words | Contexts: {len(contexts)}")
 
     return {
         "question": topic,
@@ -147,22 +174,26 @@ async def score_rows(rows: list[dict]) -> list[dict]:
     for i, row in enumerate(rows, 1):
         print(f"  Scoring [{i}/{len(rows)}] {row['question'][:50]}...")
         result = dict(row)
+        # Each lambda binds `row` as a default argument. They happen to be
+        # awaited within the same iteration today, so late binding would not
+        # bite — but "happens to" is exactly what a later refactor to gather()
+        # would silently break, scoring every case against the last row.
         try:
             result["answer_relevancy"] = await _score(
-                lambda: answer_relevancy.ascore(user_input=row["question"], response=row["answer"])
+                lambda r=row: answer_relevancy.ascore(user_input=r["question"], response=r["answer"])
             )
             result["faithfulness"] = await _score(
-                lambda: faithfulness.ascore(
-                    user_input=row["question"],
-                    response=row["answer"],
-                    retrieved_contexts=row["contexts"],
+                lambda r=row: faithfulness.ascore(
+                    user_input=r["question"],
+                    response=r["answer"],
+                    retrieved_contexts=r["contexts"],
                 )
             )
             result["context_precision"] = await _score(
-                lambda: context_precision.ascore(
-                    user_input=row["question"],
-                    reference=row["reference"],
-                    retrieved_contexts=row["contexts"],
+                lambda r=row: context_precision.ascore(
+                    user_input=r["question"],
+                    reference=r["reference"],
+                    retrieved_contexts=r["contexts"],
                 )
             )
         except Exception as e:
@@ -173,18 +204,33 @@ async def score_rows(rows: list[dict]) -> list[dict]:
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--mode", choices=["web", "documents"], default="web")
+    args = ap.parse_args()
+
+    cases = DOCUMENT_CASES if args.mode == "documents" else TEST_CASES
+    if args.mode == "documents":
+        # Must be set BEFORE the graph is built — tool selection reads it. The
+        # generation backend is forced local because that is document mode's
+        # actual configuration (the archive never leaves the machine); the
+        # judge's backend is chosen independently in _build_judge_and_embeddings.
+        os.environ["ATHENA_MODE"] = "documents"
+        os.environ.setdefault("ATHENA_LLM_BACKEND", "ollama")
+
     print("=" * 60)
-    print("Athena — Ragas Evaluation Suite")
+    print(f"Athena — Ragas Evaluation Suite ({args.mode} mode)")
     print("=" * 60)
 
     print("\nBuilding graph...")
+    from core.graph import build_graph
+
     graph = build_graph()
 
-    print(f"\nRunning {len(TEST_CASES)} golden cases through the full graph...\n")
+    print(f"\nRunning {len(cases)} golden cases through the full graph...\n")
     rows = []
-    for i, case in enumerate(TEST_CASES, 1):
+    for i, case in enumerate(cases, 1):
         try:
-            rows.append(run_case(graph, case, i, len(TEST_CASES)))
+            rows.append(run_case(graph, case, i, len(cases)))
         except Exception as e:
             print(f"    ❌ Case failed: {e}")
 
@@ -218,11 +264,13 @@ def main():
         )
 
     # ── CSV artifact ──────────────────────────────────────────────────────────
-    # A partial run must never clobber the last complete results file.
-    filename = "results.csv" if len(scored) == len(TEST_CASES) else "results_partial.csv"
-    if filename != "results.csv":
-        print(f"\n⚠️  Only {len(scored)}/{len(TEST_CASES)} cases scored — "
-              f"writing {filename}; results.csv left untouched.")
+    # A partial run must never clobber the last complete results file, and the
+    # two modes never share one: their scores are not comparable.
+    full = "results_documents.csv" if args.mode == "documents" else "results.csv"
+    filename = full if len(scored) == len(cases) else "results_partial.csv"
+    if filename != full:
+        print(f"\n⚠️  Only {len(scored)}/{len(cases)} cases scored — "
+              f"writing {filename}; {full} left untouched.")
     output_path = Path(__file__).parent / filename
     fields = ["question", *TARGETS.keys()]
     with open(output_path, "w", newline="", encoding="utf-8") as f:

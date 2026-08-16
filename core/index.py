@@ -504,7 +504,7 @@ def build_index(
             )
             # No explicit chunks_fts insert here: the chunks_fts_ai trigger does
             # it. Doing both would index every passage twice and corrupt bm25().
-            for e, vec in zip(to_store, vectors):
+            for e, vec in zip(to_store, vectors, strict=True):
                 conn.execute(
                     "INSERT INTO chunks"
                     "(doc_id,element_id,source,kind,text,locator,page,sheet,row,table_id,"

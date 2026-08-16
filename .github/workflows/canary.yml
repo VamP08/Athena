@@ -1,0 +1,30 @@
+# Nightly canary: install UNPINNED requirements and run the suite.
+#
+# The pinned lockfile keeps normal CI reproducible, but reproducible also means
+# blind — the ecosystem this project sits on (LangGraph/LangChain majors, MCP,
+# ragas) has already broken compatibility three times during development, and
+# each time the damage was discovered mid-session. This job discovers it at
+# 04:00 instead: a red canary with a green main build means "a dependency moved
+# underneath us", not "the code broke".
+name: Canary (unpinned deps)
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    env:
+      LANGCHAIN_TRACING_V2: "false"
+      MCP_MODE: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install latest allowed by requirements.txt (no lockfile)
+        run: pip install --upgrade -r requirements.txt
+      - name: Run test suite
+        run: pytest tests/ -v --tb=short

@@ -14,6 +14,62 @@ Run evaluation with:
     python eval/run_eval.py
 """
 
+# Document-mode golden cases (python eval/run_eval.py --mode documents).
+#
+# The questions are the grounding harness's answerable cases, so both harnesses
+# examine the same behaviour from two angles: the grounding harness scores the
+# figures deterministically, Ragas scores relevance/faithfulness/precision with
+# a judge. The unanswerable case is deliberately absent — Ragas has no notion of
+# "refusing was correct", and rewarding an answer there would grade the WORST
+# possible behaviour as the best. Refusal is covered by the grounding harness.
+#
+# expected_facts double as the context_precision reference, so they state the
+# answer the archive actually contains, in the surface form the documents use.
+DOCUMENT_CASES = [
+    {
+        "topic": "Wie hoch war der Umsatz in Q3 2025?",
+        "expected_facts": [
+            "Der Umsatz in Q3 2025 betrug 4.821.000 EUR",
+            "Quartalsumsatz",
+        ],
+    },
+    {
+        "topic": "Wer hat den Jahresabschluss 2024 geprüft?",
+        "expected_facts": [
+            "Wagner & Petersen Wirtschaftsprüfung GmbH hat den Jahresabschluss 2024 geprüft",
+            "uneingeschränkter Bestätigungsvermerk",
+        ],
+    },
+    {
+        "topic": "Wie hoch war das Eigenkapital zum 31.12.2024?",
+        "expected_facts": [
+            "Das Eigenkapital betrug zum 31.12.2024 7.240.000 EUR",
+            "Bilanz",
+        ],
+    },
+    {
+        "topic": "What was total revenue in the 2024 financial year?",
+        "expected_facts": [
+            "Total revenue in the 2024 financial year was 18.452.000 EUR",
+            "Umsatzerlöse",
+        ],
+    },
+    {
+        "topic": "Was war der Nettobetrag der Rechnung 2025-1042?",
+        "expected_facts": [
+            "Der Nettobetrag der Rechnung 2025-1042 betrug 128.400,00 EUR",
+            "Kranich Handels AG",
+        ],
+    },
+    {
+        "topic": "Wie viele Mitarbeitende hatte das Unternehmen 2024?",
+        "expected_facts": [
+            "Das Unternehmen hatte 2024 214 Mitarbeitende",
+            "Vorjahr 191",
+        ],
+    },
+]
+
 TEST_CASES = [
     {
         "topic": "The invention and history of the internet",

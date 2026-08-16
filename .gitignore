@@ -14,6 +14,8 @@ build/
 # Testing & evaluation
 .pytest_cache/
 eval/results.csv
+eval/results_documents.csv
+eval/results_partial.csv
 
 # Local state (sqlite checkpointer + registry)
 *.db
@@ -37,3 +39,7 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+
+/docs/
+
+/CLAUDE.md

@@ -345,8 +345,8 @@ def _parse_xlsx(path: Path, doc_id: str) -> list[ParsedElement]:
                     fml_rows = list(wb_fml[ws.title].iter_rows(values_only=True))
                     empties = sum(
                         1
-                        for r_v, r_f in zip(body_all[:200], fml_rows[1:201])
-                        for v, f in zip(r_v, r_f)
+                        for r_v, r_f in zip(body_all[:200], fml_rows[1:201], strict=False)
+                        for v, f in zip(r_v, r_f, strict=False)
                         if v is None and isinstance(f, str) and f.startswith("=")
                     )
                     if empties:

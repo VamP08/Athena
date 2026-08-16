@@ -16,7 +16,6 @@ and get_tools() is a coroutine. Each tool invocation opens a fresh MCP session.
 
 import asyncio
 import os
-from typing import List
 
 from langchain_core.tools import BaseTool
 
@@ -27,10 +26,10 @@ MCP_CONFIG = {
     }
 }
 
-_cached_tools: List[BaseTool] | None = None
+_cached_tools: list[BaseTool] | None = None
 
 
-def get_mcp_tools_sync() -> List[BaseTool]:
+def get_mcp_tools_sync() -> list[BaseTool]:
     """
     Synchronously fetch LangChain tools from the running MCP server.
 
@@ -72,4 +71,4 @@ def get_mcp_tools_sync() -> List[BaseTool]:
             f"Make sure web_server.py is running first:\n"
             f"  python -m mcp_servers.web_server\n"
             f"Original error: {e}"
-        )
+        ) from e

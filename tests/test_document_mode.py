@@ -192,11 +192,6 @@ def test_document_search_returns_content_and_artifact(built, monkeypatch):
     monkeypatch.setattr(idx, "DEFAULT_INDEX_PATH", db)
     from core.doc_tools import document_search
 
-    content, artifact = document_search.invoke(
-        {"name": "document_search", "args": {"query": "Personalaufwand"},
-         "id": "t1", "type": "tool_call"}
-    ).content, None
-
     msg = document_search.invoke(
         {"name": "document_search", "args": {"query": "Personalaufwand"},
          "id": "t2", "type": "tool_call"}

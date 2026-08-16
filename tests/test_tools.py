@@ -5,13 +5,12 @@ Unit tests for the ddgs-backed web_search tool.
 All DDGS calls are mocked — no network.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
-from core.tools import search_text, web_search
 from ddgs.exceptions import DDGSException, RatelimitException
 
+from core.tools import search_text, web_search
 
 FAKE_RESULTS = [
     {"title": "Result One", "href": "https://example.com/1", "body": "First snippet."},

@@ -10,7 +10,7 @@ Node responsibilities:
 """
 
 import os
-from typing import Literal, List
+from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
@@ -146,7 +146,7 @@ def _document_mode() -> bool:
 
 # ── Tool selection ────────────────────────────────────────────────────────────
 
-def _get_search_tools(session_id: str = "") -> List[BaseTool]:
+def _get_search_tools(session_id: str = "") -> list[BaseTool]:
     """
     Returns search tools for the researcher agent.
 
@@ -181,7 +181,16 @@ def _get_search_tools(session_id: str = "") -> List[BaseTool]:
 
 # ── Research execution (separated for testability) ────────────────────────────
 
-def _execute_research(topic: str, tools: List[BaseTool]) -> tuple[str, List[dict]]:
+def _as_text(content) -> str:
+    """Message content is str | list of parts; the graph state wants text."""
+    if isinstance(content, str):
+        return content
+    return "\n".join(
+        p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+    )
+
+
+def _execute_research(topic: str, tools: list[BaseTool]) -> tuple[str, list[dict]]:
     """
     Runs the tool-calling loop.
 
@@ -202,10 +211,10 @@ def _execute_research(topic: str, tools: List[BaseTool]) -> tuple[str, List[dict
         ),
         HumanMessage(content=f"Research this topic thoroughly: {topic}"),
     ]
-    chunks: List[dict] = []
+    chunks: list[dict] = []
     seen_keys: set = set()
 
-    for iteration in range(6):  # hard cap prevents runaway loops
+    for _iteration in range(6):  # hard cap prevents runaway loops
         response = llm_with_tools.invoke(messages)
         messages.append(response)
 
@@ -257,12 +266,15 @@ def _execute_research(topic: str, tools: List[BaseTool]) -> tuple[str, List[dict
     # tools bound, so the writer never receives a raw search dump as "research".
     last = messages[-1]
     if isinstance(last, AIMessage) and not last.tool_calls:
-        return last.content, chunks
+        # .content is typed str | list (multimodal parts). Local and Groq
+        # backends return str here, but the writer downstream assumes text, so
+        # coerce rather than trust the happy path.
+        return _as_text(last.content), chunks
 
     messages.append(HumanMessage(
         content="Stop searching. Write your comprehensive synthesis of all findings now."
     ))
-    return llm.invoke(messages).content, chunks
+    return _as_text(llm.invoke(messages).content), chunks
 
 
 # ── Supervisor node ───────────────────────────────────────────────────────────
