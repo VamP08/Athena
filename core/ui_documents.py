@@ -118,11 +118,12 @@ def render_sidebar(st) -> None:
         # trusted or not.
         if not stats.get("within_tested_envelope", True):
             st.warning(
-                f"This archive holds {stats['documents']} documents, above the "
-                f"{stats['tested_doc_limit']} Athena has been measured on. Answers "
-                f"stay grounded, but a question phrased loosely can be answered "
-                f"from a neighbouring document of the wrong type. Check the cited "
-                f"file name, or narrow the question by document type and period.",
+                f"This archive holds {stats['chunks']} indexed passages, above "
+                f"the {stats['tested_chunk_limit']} Athena has been measured on. "
+                f"Answers stay grounded, but a question phrased loosely can be "
+                f"answered from a neighbouring document of the wrong type. Check "
+                f"the cited file name, or narrow the question by document type "
+                f"and period.",
                 icon=None,
             )
         if stats.get("years"):

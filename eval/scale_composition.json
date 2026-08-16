@@ -1,0 +1,81 @@
+{
+  "targets": [
+    "budget_bakeer_2023_Q2.csv",
+    "budget_bakefeld_2024_Q2.csv",
+    "budget_deich_2024_Q1.csv",
+    "budget_elbe_2022_Q1.csv",
+    "budget_flutau_2023_Q1.csv",
+    "budget_fluter_2024_Q1.csv",
+    "budget_koog_2024_Q4.csv",
+    "budget_koogau_2024_Q1.csv",
+    "budget_marschfeld_2022_Q4.csv",
+    "budget_marschweg_2022_Q3.csv",
+    "invoice_kranichtal_2021_Q3.csv",
+    "ledger_rheinfeld_2024_Q3.csv"
+  ],
+  "n_questions": 51,
+  "k": 6,
+  "seed": 20260812,
+  "results": [
+    {
+      "condition": "targets-only",
+      "documents": 12,
+      "chunks": 189,
+      "confusable_docs": 0,
+      "n": 51,
+      "hit_at_1": 1.0,
+      "recall_at_k": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "condition": "confusable-only",
+      "documents": 83,
+      "chunks": 1292,
+      "confusable_docs": 71,
+      "n": 51,
+      "hit_at_1": 0.9019607843137255,
+      "recall_at_k": 1.0,
+      "mrr": 0.9509803921568627
+    },
+    {
+      "condition": "disjoint@3k",
+      "documents": 197,
+      "chunks": 3067,
+      "confusable_docs": 0,
+      "n": 51,
+      "hit_at_1": 1.0,
+      "recall_at_k": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "condition": "disjoint@6k",
+      "documents": 400,
+      "chunks": 6201,
+      "confusable_docs": 0,
+      "n": 51,
+      "hit_at_1": 1.0,
+      "recall_at_k": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "condition": "disjoint@max",
+      "documents": 1129,
+      "chunks": 17488,
+      "confusable_docs": 0,
+      "n": 51,
+      "hit_at_1": 0.9607843137254902,
+      "recall_at_k": 1.0,
+      "mrr": 0.9738562091503268
+    },
+    {
+      "condition": "both@6k",
+      "documents": 399,
+      "chunks": 6204,
+      "confusable_docs": 71,
+      "n": 51,
+      "hit_at_1": 0.8823529411764706,
+      "recall_at_k": 1.0,
+      "mrr": 0.9379084967320261
+    }
+  ]
+}

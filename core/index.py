@@ -50,15 +50,22 @@ DEFAULT_EMBED_MODEL = os.getenv("ATHENA_EMBED_MODEL", "bge-m3")
 #
 # Retrieval degrades gradually rather than breaking, so nothing announces itself
 # when a corpus outgrows what was tested — the published failure mode is that
-# top-k quietly fills with documents that are topically right and factually
+# top-k quietly fills with passages that are topically right and factually
 # wrong, and the reader model treats their rank as evidence. A system that
 # cannot say which regime it is operating in is asking to be trusted outside
 # the range anyone checked.
 #
-# The number comes from eval/run_scale_envelope.py, which holds the question set
-# constant and varies only the number of distractor documents. Raise it by
-# re-running that, not by editing this line.
-TESTED_DOC_LIMIT = int(os.getenv("ATHENA_TESTED_DOC_LIMIT", "200"))
+# The unit is CHUNKS, not documents, because chunks are what retrieval actually
+# ranks — a document is an arbitrary container. The envelope sweep happened to
+# use a uniform corpus (~15 chunks/document), so "200 documents" and "3,000
+# chunks" named the same boundary there; on a real archive they do not. One
+# thousand-page annual report is thousands of chunks on its own, and a
+# document-count gate would wave it through as "1 document, fine".
+#
+# The number comes from eval/run_scale_envelope.py (where hit@1 last held 1.000)
+# and eval/run_scale_composition.py (which separates chunk count from corpus
+# composition). Raise it by re-running those, not by editing this line.
+TESTED_CHUNK_LIMIT = int(os.getenv("ATHENA_TESTED_CHUNK_LIMIT", "3000"))
 
 # One connection is shared process-wide, and api/main.py runs graph work on a
 # ThreadPoolExecutor. sqlite3 objects are not safe to use concurrently from
@@ -825,8 +832,8 @@ def index_stats(index_path: str | None = None) -> dict:
         "embedded_chunks": embedded,
         "fact_tables": counts["tables"],
         "fact_rows": counts["rows"],
-        "tested_doc_limit": TESTED_DOC_LIMIT,
-        "within_tested_envelope": docs <= TESTED_DOC_LIMIT,
+        "tested_chunk_limit": TESTED_CHUNK_LIMIT,
+        "within_tested_envelope": chunks <= TESTED_CHUNK_LIMIT,
         "doc_types": types,
         "years": years,
         "embed_model": model,

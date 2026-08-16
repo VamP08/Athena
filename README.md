@@ -193,6 +193,46 @@ Measured on a consumer laptop, fully offline: 13 documents → 447 indexed passa
 **18.5 s**; a complete research → draft → review cycle in **~3.5 min** on a local 9B
 model with reasoning enabled.
 
+### Tested operating envelope (how big an archive this is measured for)
+
+Retrieval quality does not break at scale — it degrades *silently*, which is worse:
+the published failure mode is that top-k fills with passages that are topically
+right and factually wrong, and the reader model treats their rank as evidence. So
+instead of implying unlimited scale, the envelope was measured: the same 51
+questions, with only the number of distractor documents varied (subset indexes are
+carved from one full index, so the embeddings are identical across sizes).
+
+| indexed passages | documents | hit@1 | recall@6 | answer accuracy | misattributed |
+|---|---|---|---|---|---|
+| 312 | 20 | 1.000 | 1.000 | 0.980 | 0.000 |
+| **3,064** | **200** | **1.000** | **1.000** | **1.000** | **0.000** |
+| 6,197 | 400 | 0.961 | 1.000 | 0.941 | 0.059 |
+| 12,390 | 800 | 0.902 | 1.000 | — | — |
+| 18,591 | 1,200 | 0.922 | 0.980 | 0.765 | 0.176 |
+
+Three findings worth more than the table. At moderate scale, **misattribution begins
+exactly where hit@1 leaves 1.000** — the generation failure is downstream of the
+ranking failure. A controlled follow-up that decoupled corpus size from corpus
+composition showed **resemblance, not size, is the driver**: 71 documents similar to
+the targets (same client, other quarters) cost more accuracy than 17,500 passages of
+unrelated material, while at the very chunk count where the mixed corpus degraded, an
+unrelated-only corpus still scored 1.000. And at full scale a second mechanism takes
+over: of the nine wrong-document answers at 1,200 documents, **six occurred with the
+correct document ranked first** — the top-k window holds enough look-alikes that the
+reader quotes a neighbour even when the ranker got it right, which is why the
+envelope is set where *answers*, not just ranks, were perfect. The characteristic
+failure is specific throughout: right client, right quarter, *wrong document type* —
+a statement's figure quoted where the budget's was asked for. Structured questions
+(invoice numbers, amount lookups) held 12/12 even at 1,200 documents; loosely
+phrased ones are what break (5/12).
+
+The system states which regime it is in: archives above the tested envelope
+(3,000 indexed passages, `ATHENA_TESTED_CHUNK_LIMIT`) get a visible notice in the
+UI, the API's `/health`, and — most importantly — in the tool output the model
+itself reads, telling it to verify the cited file's *type* before quoting a figure.
+Not a hard cap: above the limit the system keeps working and says it is operating
+outside what was measured.
+
 ## Two-Environment Strategy
 
 | Environment | Model | Purpose |

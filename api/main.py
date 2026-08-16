@@ -330,7 +330,8 @@ def health():
         stats = idx.index_stats()
         out["archive"] = {
             "documents": stats["documents"],
-            "tested_doc_limit": stats["tested_doc_limit"],
+            "chunks": stats["chunks"],
+            "tested_chunk_limit": stats["tested_chunk_limit"],
             "within_tested_envelope": stats["within_tested_envelope"],
         }
     except Exception:  # noqa: BLE001 - no index is a valid state, not an outage

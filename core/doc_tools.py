@@ -189,13 +189,13 @@ def list_documents(doc_type: str = "", year: str = "") -> str:
     # what turns a confident wrong figure into a checked one.
     if not stats.get("within_tested_envelope", True):
         lines.append(
-            f"WARNING: this archive is LARGER than the {stats['tested_doc_limit']} "
-            f"documents Athena has been measured on. Above that size, search "
-            f"sometimes ranks first a document about the right client and period "
-            f"but of the WRONG TYPE (a statement instead of a budget). Before you "
-            f"quote any figure, check that the passage's file name matches the "
-            f"document type the question asked about, and say which file each "
-            f"figure came from."
+            f"WARNING: this archive holds {stats['chunks']} indexed passages, "
+            f"more than the {stats['tested_chunk_limit']} Athena has been "
+            f"measured on. Above that size, search sometimes ranks first a "
+            f"document about the right client and period but of the WRONG TYPE "
+            f"(a statement instead of a budget). Before you quote any figure, "
+            f"check that the passage's file name matches the document type the "
+            f"question asked about, and say which file each figure came from."
         )
         lines.append("")
     for d in docs:

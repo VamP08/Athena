@@ -1,0 +1,500 @@
+{
+  "targets": [
+    "budget_bakeer_2023_Q2.csv",
+    "budget_bakefeld_2024_Q2.csv",
+    "budget_deich_2024_Q1.csv",
+    "budget_elbe_2022_Q1.csv",
+    "budget_flutau_2023_Q1.csv",
+    "budget_fluter_2024_Q1.csv",
+    "budget_koog_2024_Q4.csv",
+    "budget_koogau_2024_Q1.csv",
+    "budget_marschfeld_2022_Q4.csv",
+    "budget_marschweg_2022_Q3.csv",
+    "invoice_kranichtal_2021_Q3.csv",
+    "ledger_rheinfeld_2024_Q3.csv"
+  ],
+  "n_questions": 51,
+  "k": 6,
+  "seed": 20260812,
+  "results": [
+    {
+      "documents": 1200,
+      "chunks": 18591,
+      "distractors": 1188,
+      "retrieval": {
+        "n": 51,
+        "hit_at_1": 0.9215686274509803,
+        "recall_at_k": 0.9803921568627451,
+        "mrr": 0.9509803921568627
+      },
+      "answers": {
+        "n": 51,
+        "answer_correct": 0.7647058823529411,
+        "cited_correct": 0.8431372549019608,
+        "misattributed": 0.17647058823529413,
+        "refused": 0.058823529411764705,
+        "rows": [
+          {
+            "id": "amt_2022-Q1-00019",
+            "kind": "amount_lookup",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 660.211,29\nQuelle: budget_elbe_2022_Q1.csv"
+          },
+          {
+            "id": "verbatim_2024-Q4-00469",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 538.685,57\nQuelle: budget_koog_2024_Q4.csv"
+          },
+          {
+            "id": "verbatim_2024-Q1-00228",
+            "kind": "verbatim_control",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: 283.679,69\nQuelle: statement_deich_2024_Q1.csv"
+          },
+          {
+            "id": "para_2024-Q3-00039",
+            "kind": "paraphrase",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 406.703,31\nQuelle: ledger_rheinfeld_2024_Q3.csv"
+          },
+          {
+            "id": "syn_2023-Q1-01069",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 87.658,15\nQuelle: budget_flutau_2023_Q1.csv"
+          },
+          {
+            "id": "ref_2023-Q2-01100",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2023-Q2-01100\nQuelle: budget_bakeer_2023_Q2.csv"
+          },
+          {
+            "id": "amt_2021-Q3-00005",
+            "kind": "amount_lookup",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 850.560,59\nQuelle: invoice_kranichtal_2021_Q3.csv"
+          },
+          {
+            "id": "syn_2022-Q1-00019",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 660.211,29\nQuelle: budget_elbe_2022_Q1.csv"
+          },
+          {
+            "id": "syn_2024-Q1-00202",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 749.251,73\nQuelle: budget_fluter_2024_Q1.csv"
+          },
+          {
+            "id": "syn_2024-Q1-00228",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 516.671,07\nQuelle: budget_deich_2024_Q1.csv"
+          },
+          {
+            "id": "ref_2024-Q1-00852",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2024-Q1-00852\nQuelle: budget_koogau_2024_Q1.csv"
+          },
+          {
+            "id": "ref_2022-Q1-00019",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2022-Q1-00019\nQuelle: budget_elbe_2022_Q1.csv"
+          },
+          {
+            "id": "ref_2024-Q1-00202",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2024-Q1-00202\nQuelle: budget_fluter_2024_Q1.csv"
+          },
+          {
+            "id": "para_2024-Q1-00202",
+            "kind": "paraphrase",
+            "answer_correct": false,
+            "cited_correct": true,
+            "refused": true,
+            "misattributed": false,
+            "answer": "Antwort: Die Informationen zu einer Rechnung für Fluter KG im ersten Quartal 2024 sind in den vorliegenden Passagen nicht enthalten.\nQuelle: budget_fluter_2024_Q1.csv (Budget-Dokument, keine Rechnung)"
+          },
+          {
+            "id": "para_2022-Q4-01150",
+            "kind": "paraphrase",
+            "answer_correct": false,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: Die Passagen enthalten keine Rechnung für Marschfeld SE im vierten Quartal 2022 (nur ein Budget-Dokument).\nQuelle: budget_marschfeld_2022_Q4.csv"
+          },
+          {
+            "id": "syn_2021-Q3-00005",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 850.560,59\nQuelle: invoice_kranichtal_2021_Q3.csv"
+          },
+          {
+            "id": "para_2024-Q1-00228",
+            "kind": "paraphrase",
+            "answer_correct": false,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: Die Passagen enthalten keine Rechnung (invoice) für Deich GmbH im ersten Quartal 2024. Es gibt nur ein Budget-Dokument [budget_deich_2024_Q1.csv] und eine Aussage [statement_deich_2024_Q1.csv], aber keine Rechnung für Q1 2024.\nQuelle: budget_deich_2024_Q1.csv, statement_deich_2024_Q1.csv"
+          },
+          {
+            "id": "para_2023-Q1-01069",
+            "kind": "paraphrase",
+            "answer_correct": false,
+            "cited_correct": true,
+            "refused": true,
+            "misattributed": false,
+            "answer": "Antwort: Die Informationen sind nicht enthalten – es gibt keine Rechnung (statement) für Flutau GmbH im ersten Quartal 2023 in den vorliegenden Dokumenten. Der einzige passende Eintrag [1] ist ein Budget-Dokument, keine Rechnung.\nQuelle: budget_flutau_2023_Q1.csv"
+          },
+          {
+            "id": "verbatim_2022-Q3-00274",
+            "kind": "verbatim_control",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: 822.989,37\nQuelle: invoice_marschweg_2022_Q3.csv"
+          },
+          {
+            "id": "syn_2023-Q2-01100",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 790.795,54\nQuelle: budget_bakeer_2023_Q2.csv"
+          },
+          {
+            "id": "ref_2024-Q2-00651",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2024-Q2-00651\nQuelle: budget_bakefeld_2024_Q2.csv"
+          },
+          {
+            "id": "verbatim_2022-Q4-01150",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 724.421,48\nQuelle: budget_marschfeld_2022_Q4.csv"
+          },
+          {
+            "id": "verbatim_2023-Q2-01100",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 790.795,54\nQuelle: budget_bakeer_2023_Q2.csv"
+          },
+          {
+            "id": "para_2022-Q3-00274",
+            "kind": "paraphrase",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: 822.989,37\nQuelle: invoice_marschweg_2022_Q3.csv"
+          },
+          {
+            "id": "ref_2022-Q3-00274",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2022-Q3-00274\nQuelle: budget_marschweg_2022_Q3.csv"
+          },
+          {
+            "id": "verbatim_2023-Q1-01069",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 87.658,15\nQuelle: budget_flutau_2023_Q1.csv"
+          },
+          {
+            "id": "para_2024-Q4-00469",
+            "kind": "paraphrase",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: Die Passagen enthalten keine Rechnung (invoice) für Koog GmbH & Co. KG im vierten Quartal 2024. Es existiert nur ein Budget-Dokument (budget_koog_2024_Q4.csv) mit Nettobetrag 538.685,57 EUR, aber kein Invoice-Dokument für diesen Kunden und Zeitraum.\nQuelle: budget_koog_2024_Q4.csv"
+          },
+          {
+            "id": "ref_2024-Q3-00039",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2024-Q3-00039\nQuelle: ledger_rheinfeld_2024_Q3.csv"
+          },
+          {
+            "id": "verbatim_2024-Q3-00039",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 406.703,31\nQuelle: ledger_rheinfeld_2024_Q3.csv"
+          },
+          {
+            "id": "syn_2024-Q2-00651",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 578.174,43\nQuelle: budget_bakefeld_2024_Q2.csv"
+          },
+          {
+            "id": "para_2023-Q2-01100",
+            "kind": "paraphrase",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 790.795,54\nQuelle: budget_bakeer_2023_Q2.csv"
+          },
+          {
+            "id": "ref_2022-Q4-01150",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2022-Q4-01150\nQuelle: budget_marschfeld_2022_Q4.csv"
+          },
+          {
+            "id": "verbatim_2024-Q1-00852",
+            "kind": "verbatim_control",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: 827.830,21\nQuelle: invoice_koogau_2024_Q1.csv"
+          },
+          {
+            "id": "para_2024-Q2-00651",
+            "kind": "paraphrase",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: 174.303,97\nQuelle: statement_bakefeld_2024_Q2.csv"
+          },
+          {
+            "id": "syn_2024-Q1-00852",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 142.281,38\nQuelle: budget_koogau_2024_Q1.csv"
+          },
+          {
+            "id": "syn_2024-Q4-00469",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 538.685,57\nQuelle: budget_koog_2024_Q4.csv"
+          },
+          {
+            "id": "ref_2024-Q1-00228",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2024-Q1-00228\nQuelle: budget_deich_2024_Q1.csv"
+          },
+          {
+            "id": "syn_2022-Q3-00274",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 277.377,32\nQuelle: budget_marschweg_2022_Q3.csv"
+          },
+          {
+            "id": "para_2024-Q1-00852",
+            "kind": "paraphrase",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: 827.830,21\nQuelle: invoice_koogau_2024_Q1.csv"
+          },
+          {
+            "id": "syn_2022-Q4-01150",
+            "kind": "type_synonym",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 724.421,48\nQuelle: budget_marschfeld_2022_Q4.csv"
+          },
+          {
+            "id": "amt_2024-Q3-00039",
+            "kind": "amount_lookup",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 406.703,31\nQuelle: ledger_rheinfeld_2024_Q3.csv"
+          },
+          {
+            "id": "ref_2021-Q3-00005",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2021-Q3-00005\nQuelle: invoice_kranichtal_2021_Q3.csv"
+          },
+          {
+            "id": "verbatim_2024-Q2-00651",
+            "kind": "verbatim_control",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": false,
+            "misattributed": true,
+            "answer": "Antwort: 174.303,97\nQuelle: statement_bakefeld_2024_Q2.csv"
+          },
+          {
+            "id": "syn_2024-Q3-00039",
+            "kind": "type_synonym",
+            "answer_correct": false,
+            "cited_correct": false,
+            "refused": true,
+            "misattributed": false,
+            "answer": "Antwort: Die Informationen zu Rheinfeld KG sind in den Passagen nicht enthalten.\nQuelle: Keine der aufgeführten Dateien"
+          },
+          {
+            "id": "ref_2024-Q4-00469",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2024-Q4-00469\nQuelle: budget_koog_2024_Q4.csv"
+          },
+          {
+            "id": "verbatim_2024-Q1-00202",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 749.251,73\nQuelle: budget_fluter_2024_Q1.csv"
+          },
+          {
+            "id": "verbatim_2021-Q3-00005",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 850.560,59\nQuelle: invoice_kranichtal_2021_Q3.csv"
+          },
+          {
+            "id": "verbatim_2022-Q1-00019",
+            "kind": "verbatim_control",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 660.211,29\nQuelle: budget_elbe_2022_Q1.csv"
+          },
+          {
+            "id": "ref_2023-Q1-01069",
+            "kind": "exact_identifier",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 2023-Q1-01069\nQuelle: budget_flutau_2023_Q1.csv"
+          },
+          {
+            "id": "para_2022-Q1-00019",
+            "kind": "paraphrase",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 660.211,29\nQuelle: budget_elbe_2022_Q1.csv"
+          },
+          {
+            "id": "para_2021-Q3-00005",
+            "kind": "paraphrase",
+            "answer_correct": true,
+            "cited_correct": true,
+            "refused": false,
+            "misattributed": false,
+            "answer": "Antwort: 850.560,59\nQuelle: invoice_kranichtal_2021_Q3.csv"
+          }
+        ]
+      }
+    }
+  ]
+}

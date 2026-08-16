@@ -329,14 +329,19 @@ def test_index_stats_reports_the_tested_envelope(built, monkeypatch):
     Retrieval past the measured corpus size degrades gradually, so nothing in
     the output looks different when the archive has outgrown what was tested —
     that is precisely why it has to be stated rather than inferred.
+
+    The gate is on CHUNKS, not documents. Retrieval ranks chunks; a document is
+    an arbitrary container, and a single thousand-page report would sail past
+    any document-count gate while carrying more chunks than the whole tested
+    envelope.
     """
     _, db = built
-    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 200)
+    monkeypatch.setattr(idx, "TESTED_CHUNK_LIMIT", 3000)
     stats = idx.index_stats(db)
-    assert stats["tested_doc_limit"] == 200
+    assert stats["tested_chunk_limit"] == 3000
     assert stats["within_tested_envelope"] is True
 
-    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 1)
+    monkeypatch.setattr(idx, "TESTED_CHUNK_LIMIT", 1)
     assert idx.index_stats(db)["within_tested_envelope"] is False
 
 
@@ -355,10 +360,10 @@ def test_list_documents_warns_the_model_only_when_over_the_limit(built, monkeypa
     monkeypatch.setenv("ATHENA_INDEX_PATH", db)
     monkeypatch.setattr(idx, "DEFAULT_INDEX_PATH", db)
 
-    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 200)
+    monkeypatch.setattr(idx, "TESTED_CHUNK_LIMIT", 3000)
     assert "WARNING" not in doc_tools.list_documents.invoke({})
 
-    monkeypatch.setattr(idx, "TESTED_DOC_LIMIT", 1)
+    monkeypatch.setattr(idx, "TESTED_CHUNK_LIMIT", 1)
     over = doc_tools.list_documents.invoke({})
     assert "WARNING" in over
     assert "WRONG TYPE" in over
