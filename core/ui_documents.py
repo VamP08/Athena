@@ -40,6 +40,13 @@ _SUPPORTED = ("pdf", "xlsx", "xlsm", "docx", "csv", "md", "txt")
 _MAX_UPLOAD_MB = int(os.getenv("ATHENA_MAX_UPLOAD_MB", "25"))
 
 
+def is_cloud_demo() -> bool:
+    """Set ATHENA_DEPLOY=cloud in the hosting secrets. Deliberately a flag, not
+    autodetection — a wrong guess either hides a privacy notice or nags every
+    local user."""
+    return os.getenv("ATHENA_DEPLOY", "").lower() == "cloud"
+
+
 def ensure_session(st) -> str:
     """Stable per-browser-session id, independent of the graph's thread_id."""
     if "athena_session_id" not in st.session_state:
@@ -128,6 +135,11 @@ def render_sidebar(st) -> None:
             )
         if stats.get("years"):
             st.caption("Years: " + ", ".join(y for y in stats["years"] if y))
+    elif is_cloud_demo():
+        st.caption(
+            "**Archive** · none in this demo — attach files below and the "
+            "researcher searches those."
+        )
     else:
         st.caption(
             "**Archive** · not indexed yet. Put documents in the corpus folder "
@@ -136,6 +148,16 @@ def render_sidebar(st) -> None:
 
     # ── Attached to this chat ────────────────────────────────────────────────
     st.caption("**Attached to this chat** — never added to the archive, gone when you clear it.")
+    if is_cloud_demo():
+        # The local install's pitch is "nothing leaves the machine"; this demo
+        # inverts that (generation runs on cloud inference, and without a local
+        # embedder retrieval is exact-term only). Saying so is part of the
+        # product, not small print.
+        st.caption(
+            "⚠ Cloud demo: attached text is processed by a cloud model — don't "
+            "upload real confidential documents. Search here is exact-term only; "
+            "semantic and cross-language search need the local install."
+        )
     uploads = st.file_uploader(
         "Attach documents",
         type=list(_SUPPORTED),

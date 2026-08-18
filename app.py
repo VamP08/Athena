@@ -406,7 +406,16 @@ elif topic:
         avatar = ":material/person:" if msg["role"] == "user" else ":material/local_library:"
         with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
-    run_pipeline(topic)
+    # On a public URL every visitor shares one free-tier API budget; 0 = off.
+    max_runs = int(os.getenv("ATHENA_MAX_RUNS_PER_SESSION", "0"))
+    if max_runs and st.session_state.get("run_count", 0) >= max_runs:
+        st.warning(
+            f"Demo limit reached ({max_runs} research runs per session). "
+            "Run Athena locally for unlimited use — see the README."
+        )
+    else:
+        st.session_state.run_count = st.session_state.get("run_count", 0) + 1
+        run_pipeline(topic)
 
 elif st.session_state.messages:
     # ── History ───────────────────────────────────────────────────────────────

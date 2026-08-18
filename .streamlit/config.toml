@@ -11,3 +11,8 @@ font = "sans serif"
 
 [browser]
 gatherUsageStats = false
+
+[server]
+# Streamlit's own transport cap. The session store enforces its per-chat
+# limits after parsing; this stops a 200 MB default upload before it ships.
+maxUploadSize = 25
