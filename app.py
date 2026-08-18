@@ -112,8 +112,14 @@ GROQ_MODELS = [
 
 
 @st.cache_data(ttl=30)
-def list_ollama_models() -> list[str]:
-    """Chat-capable models actually pulled on the local Ollama server."""
+def list_ollama_models() -> list[str] | None:
+    """Chat-capable models on the local Ollama server, or None if unreachable.
+
+    None and [] are different answers: unreachable means the whole local
+    backend must not be offered — silently substituting a default model name
+    here is what once let a cloud deployment show "Ollama (local)" in the
+    picker and then greet the user with a raw httpx traceback.
+    """
     import httpx
 
     base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -122,13 +128,26 @@ def list_ollama_models() -> list[str]:
         names = [m["name"] for m in tags.get("models", [])]
         return [n for n in names if "embed" not in n] or [os.getenv("OLLAMA_MODEL", "qwen3.5:9b")]
     except Exception:
-        return [os.getenv("OLLAMA_MODEL", "qwen3.5:9b")]
+        return None
 
 
 def model_picker():
     has_groq = bool(os.getenv("GROQ_API_KEY"))
+    ollama_models = list_ollama_models()
 
-    backends = (["Groq (cloud)", "Ollama (local)"] if has_groq else ["Ollama (local)"])
+    backends = []
+    if has_groq:
+        backends.append("Groq (cloud)")
+    if ollama_models:
+        backends.append("Ollama (local)")
+    if not backends:
+        st.error(
+            "No model backend is reachable. Set GROQ_API_KEY for the cloud "
+            "backend, or start Ollama for the local one."
+        )
+        return
+    if not ollama_models and has_groq:
+        st.caption("Local backend (Ollama) not reachable here — cloud only.")
     from core.llm import resolve_backend
     active_backend, _ = resolve_backend()
     default_ix = 0 if (active_backend == "groq" and has_groq) else len(backends) - 1
@@ -142,7 +161,7 @@ def model_picker():
         os.environ["ATHENA_LLM_BACKEND"] = "groq"
         os.environ["GROQ_MODEL"] = model
     else:
-        options = list_ollama_models()
+        options = ollama_models
         current = os.getenv("OLLAMA_MODEL", options[0])
         ix = options.index(current) if current in options else 0
         model = st.selectbox("Model", options, index=ix)
@@ -210,6 +229,22 @@ def finalise(report: str):
     st.session_state.thread_id = str(uuid.uuid4())
 
 
+def _model_backend_error(e: Exception) -> None:
+    """A human-readable failure instead of a traceback in the chat pane."""
+    name = type(e).__name__
+    if "Connect" in name or "Connection" in name:
+        st.error(
+            "The selected model backend is not reachable from this machine. "
+            "If you chose **Ollama (local)**, it is not running here — switch "
+            "the backend in the sidebar and try again."
+        )
+    else:
+        st.error(
+            f"The model backend failed mid-run ({name}). "
+            "Try again, or switch the backend in the sidebar."
+        )
+
+
 def run_pipeline(topic: str):
     """Run the research graph for a new topic and stream progress."""
     st.session_state.thread_id = str(uuid.uuid4())
@@ -231,18 +266,23 @@ def run_pipeline(topic: str):
 
     with st.chat_message("assistant", avatar=":material/local_library:"):
         with st.status("Working on it…", expanded=True) as status:
-            for chunk in graph.stream(
-                make_initial_state(topic, session_id=session_id),
-                config=config,
-                stream_mode="updates",
-            ):
-                for node_name in chunk:
-                    label = NODE_LABELS.get(node_name)
-                    if label:
-                        st.markdown(
-                            f'<div class="stage-line">{label}</div>',
-                            unsafe_allow_html=True,
-                        )
+            try:
+                for chunk in graph.stream(
+                    make_initial_state(topic, session_id=session_id),
+                    config=config,
+                    stream_mode="updates",
+                ):
+                    for node_name in chunk:
+                        label = NODE_LABELS.get(node_name)
+                        if label:
+                            st.markdown(
+                                f'<div class="stage-line">{label}</div>',
+                                unsafe_allow_html=True,
+                            )
+            except Exception as e:  # noqa: BLE001 - a backend outage must not print a traceback at the user
+                status.update(label="Run failed", state="error")
+                _model_backend_error(e)
+                return
 
             status.update(label="Draft ready for your review", state="complete")
 
@@ -328,7 +368,11 @@ if st.session_state.awaiting_review:
 
         if approve_col.button("Approve report", type="primary", use_container_width=True):
             with st.spinner("Finalising…"):
-                graph.invoke(Command(resume="approve"), config=config)
+                try:
+                    graph.invoke(Command(resume="approve"), config=config)
+                except Exception as e:  # noqa: BLE001
+                    _model_backend_error(e)
+                    st.stop()
             finalise(draft)
             st.rerun()
 
@@ -339,7 +383,11 @@ if st.session_state.awaiting_review:
             help=None if feedback.strip() else "Enter revision notes first.",
         ):
             with st.spinner("Revising draft…"):
-                graph.invoke(Command(resume=feedback.strip()), config=config)
+                try:
+                    graph.invoke(Command(resume=feedback.strip()), config=config)
+                except Exception as e:  # noqa: BLE001
+                    _model_backend_error(e)
+                    st.stop()
 
             new_state = graph.get_state(config)
             if new_state.next:
