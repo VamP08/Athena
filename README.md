@@ -299,7 +299,7 @@ different embedding models — one combined number would manufacture a trend.
 it reads near-binary. Weakest cell: faithfulness 0.64 on the fast-moving topic
 (SpaceX Starship).</sup>
 
-**Document mode** (6 archive questions · judge `gpt-oss-120b` on Groq · 2026-08-16):
+**Document mode** (6 archive questions · generation local `qwen3.5:9b` · judge `gpt-oss-120b` on Groq · 2026-08-16):
 
 | Metric | Score | Target | |
 |---|---|---|---|
