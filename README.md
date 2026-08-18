@@ -13,8 +13,8 @@ self-hosted AI systems. Athena is built for exactly that constraint: every model
 call — the agents, drafting, even the evaluation judge and embeddings — can run
 locally, so prompts, drafts, and internal context never leave the machine. In
 web-research mode, only the search queries themselves reach external engines;
-the planned document mode (reports over your own PDFs) removes even that,
-running fully air-gapped.
+**document mode** (reports over your own financial archive) removes even that
+and runs fully air-gapped — no web tool is loaded at all.
 
 ---
 
@@ -23,6 +23,8 @@ running fully air-gapped.
 | Skill | Implementation |
 |---|---|
 | **Retrieval (RAG) over a real archive** | Mixed-format ingestion (PDF · XLSX · DOCX · CSV · MD) into **one SQLite file** — `sqlite-vec` vectors + FTS5 lexical, fused with Reciprocal Rank Fusion, filtered by document type and year |
+| **Exact aggregation, not top-k guessing** | "How many invoices are open, and what do they total?" is answered by SQL over **every** matching row, never by adding up retrieved snippets — with refusal rules for running balances, subtotal rows, and identifier columns. Verified against ground truth to the cent |
+| **A measured operating envelope** | Retrieval quality was measured against corpus size instead of assumed: perfect to 3,000 indexed passages, degradation curve published, and the system tells the user *and the model* when an archive exceeds what was tested |
 | **Multi-agent orchestration** | LangGraph 1.2 Supervisor pattern — deterministic routing rules first, Pydantic structured-output LLM routing for ambiguous cases |
 | **Human-in-the-Loop (HITL)** | `interrupt()` pauses the graph mid-execution; `Command(resume=)` restarts it with approval or feedback; feedback loops back through the writer |
 | **Custom MCP server** | FastMCP 2.x server exposing `search_web` + `fetch_page` over streamable HTTP — any MCP client (Claude Desktop, Cursor) connects without code changes |
@@ -53,7 +55,9 @@ User → Streamlit UI → LangGraph StateGraph
 
 The researcher is tool-agnostic: in direct mode it uses an in-process `ddgs`
 metasearch tool; with `MCP_MODE=true` it discovers the same capabilities from a
-standalone MCP server. The graph doesn't change — that's the point of MCP.
+standalone MCP server; with `ATHENA_MODE=documents` the web tools are replaced by
+`document_search` · `list_documents` · `aggregate_documents` over a local archive.
+The graph never changes — only the tool set swaps.
 
 ---
 
@@ -352,16 +356,18 @@ athena/
 ├── eval/                     # grounding · retrieval · scale-envelope · Ragas harnesses
 ├── pyproject.toml            # packaging + ruff/mypy config
 ├── requirements.lock         # exact known-good pins (CI); .txt holds the ranges
-├── Dockerfile · docker-compose.yml
-└── docs/                     # PROGRESS.md · ROADMAP.md · DECISIONS.md
+└── Dockerfile · docker-compose.yml
 ```
 
 ---
 
-## Engineering Log
+## Engineering Notes
 
-Development status, phase gates, and the decision log live in
-[docs/PROGRESS.md](docs/PROGRESS.md), [docs/ROADMAP.md](docs/ROADMAP.md), and
-[docs/DECISIONS.md](docs/DECISIONS.md) — including why this project dropped
-langchain-community (sunset June 2026), migrated MCP off SSE, and moved off
-Groq's deprecated llama-3.3-70b before its 2026-08-16 shutdown.
+Some decisions this project made against the current, each measured rather than
+assumed: it dropped langchain-community before its sunset and owns its search
+tool; migrated MCP off SSE to streamable HTTP; moved off Groq's llama-3.3-70b
+before the 2026-08-16 shutdown; rejected PyMuPDF on licence (AGPL across a
+service boundary) despite better tables; keeps the local model's reasoning trace
+ON after measuring that disabling it — 4× faster — produced five fabricated
+figures; and publishes its evaluation misses next to its passes, with the
+decomposition of why.
